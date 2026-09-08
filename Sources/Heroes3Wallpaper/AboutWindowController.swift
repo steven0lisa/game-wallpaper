@@ -3,14 +3,17 @@ import AppKit
 /// heroes3 风格 About 对话框。
 ///
 /// 视觉还原自 VCMI `CMessage::drawBorder`（client/windows/CMessage.cpp）：
-/// DIALGBOX.def 的帧按 4 角 + 4 边平铺成边框（角贴、边沿轴步进），内部用
-/// dialogbox_8（深蓝）平铺作背景；中央循环播放 cangel.def 的天使待机动画；
+/// DIALGBOX.def 的帧按 4 角 + 4 边平铺成边框（角贴、边沿轴步进），内部平铺
+/// DIBOXBCK.PCX 棕纸作背景；中央循环播放 cangel.def 的天使待机动画；
 /// 下方 IOKAY32 精灵作 OK 按钮。文案走系统本地化。
 final class AboutWindowController: NSWindowController {
     private let content = AboutContent()
 
     init() {
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 380),
+        // 窗口 = DIALGBOX 边框画布，尺寸取 64px 网格（128 + 64k）：512×448。
+        // 边条恰好铺满：上下各 6 条、左右各 5 条、四角各一，无裁切、无重叠、无缝隙。
+        // 内容区 = 内缩 左右 14 / 上下 15 → 484×418。
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 512, height: 448),
                            styleMask: .borderless,
                            backing: .buffered,
                            defer: false)
@@ -50,7 +53,6 @@ final class AboutContent {
     /// 对话框内部棕色纸底（DIBOXBCK.PCX，平铺）。
     private(set) var background: NSImage?
 
-    let author = "steven0lisa"
     let appName: String
     let version: String
     let copyright: String
@@ -88,11 +90,18 @@ final class AboutContent {
     func logoFrame(_ i: Int) -> NSImage? { logoFrames.isEmpty ? nil : logoFrames[i % logoFrames.count] }
 }
 
-/// heroes3 对话框边框绘制：内部 DIBOXBCK 纸底平铺 + DIALGBOX 四角/四边
-/// （对齐 VCMI CMessage::drawBorder——box[0..7]，box[8..10] 的内部是色键不作背景）。
+/// heroes3 对话框绘制：还原 VCMI BORDERED 窗口布局——
+/// 边框（DIALGBOX box[0..7]）围在内容区四周（外扩 左右 14px / 上下 15px），
+/// 内部是 DIBOXBCK.PCX 棕纸纹理平铺（CFilledTexture），box[8..10] 不参与。
+/// 与 VCMI 的差异：窗口尺寸取 64px 网格对齐（128+64k），边条恰好铺满，
+/// 故无需 VCMI drawBorder 里 bottom/right 的 +1 重叠补缝。
 final class Heroes3BorderView: NSView {
     var content: AboutContent?
     var borderColor: NSColor = #colorLiteral(red: 0.22, green: 0.30, blue: 0.55, alpha: 1) { didSet { needsDisplay = true } }
+
+    /// VCMI BORDERED 的边框外扩量：左右 14px、上下 15px（角 64 覆盖其上）。
+    static let borderLeft: CGFloat = 14
+    static let borderTop: CGFloat = 15
 
     override func draw(_ dirtyRect: NSRect) {
         guard let content else {
@@ -100,59 +109,61 @@ final class Heroes3BorderView: NSView {
             return
         }
         let w = bounds.width, h = bounds.height
-        // 内部填充：DIBOXBCK.PCX 棕色纸纹理平铺（VCMI CFilledTexture::showAll 同款；
-        // drawBorder 只画边框 box[0..7]，box[8..10] 不是内部背景，其内部是色键）
+        let bx = Self.borderLeft, by = Self.borderTop          // 内容区内缩：左右 14 / 上下 15
+        let cw = w - 2 * bx, ch = h - 2 * by                   // 内容区尺寸
+
+        // 0) 整窗兜底：边框贴图透明缝隙处不能露窗口白底，用取自 DIBOXBCK 的深棕色
+        NSColor(calibratedRed: 0.19, green: 0.13, blue: 0.08, alpha: 1).setFill()
+        bounds.fill()
+
+        // 1) 内容区：DIBOXBCK 棕纸平铺（限内容区，VCMI CFilledTexture 在 pos 内）
         if let bg = content.background {
             let tile = bg.size
-            var y: CGFloat = 0
-            while y < h {
-                var x: CGFloat = 0
-                while x < w {
+            var y = by
+            while y < by + ch {
+                var x = bx
+                while x < bx + cw {
                     bg.draw(in: NSRect(x: x, y: y, width: tile.width, height: tile.height),
-                             from: NSRect(origin: .zero, size: tile), operation: .copy, fraction: 1)
+                            from: NSRect(origin: .zero, size: tile), operation: .sourceOver, fraction: 1)
                     x += tile.width
                 }
                 y += tile.height
             }
-        } else {
-            NSColor(calibratedRed: 0.19, green: 0.13, blue: 0.08, alpha: 1).setFill()
-            bounds.fill()
         }
 
-        // 定义边框厚度
-        let cornerW: CGFloat = 64, cornerH: CGFloat = 64
-        let topH: CGFloat = 15, sideW: CGFloat = 14
-
-        func draw(_ frame: NSImage?, in rect: NSRect) {
+        // 2) 边框：以整窗为画布，SDL 顶左坐标（y 向下）标注贴图位置，
+        //    drawSDL 负责翻转到 NSView 底左坐标；透明像素必须 sourceOver
+        //    （.copy 会把色键打穿露底）。
+        func drawSDL(_ frame: NSImage?, _ sdlX: CGFloat, _ sdlY: CGFloat) {
             guard let frame else { return }
             let size = frame.size
-            frame.draw(in: rect,
-                       from: NSRect(origin: .zero, size: size), operation: .copy, fraction: 1)
+            frame.draw(in: NSRect(x: sdlX, y: h - sdlY - size.height,
+                                  width: size.width, height: size.height),
+                       from: NSRect(origin: .zero, size: size),
+                       operation: .sourceOver, fraction: 1)
         }
 
-        // 4 角
-        draw(content.borderFrames[0], in: NSRect(x: 0, y: 0, width: cornerW, height: cornerH))
-        draw(content.borderFrames[1], in: NSRect(x: w - cornerW, y: 0, width: cornerW, height: cornerH))
-        draw(content.borderFrames[2], in: NSRect(x: 0, y: h - cornerH, width: cornerW, height: cornerH))
-        draw(content.borderFrames[3], in: NSRect(x: w - cornerW, y: h - cornerH, width: cornerW, height: cornerH))
-
-        // 上下边（沿 x 步进到 stop，tile 顶部/底部中央段）
-        let stopX = w - cornerW
-        var sx = cornerW
-        while sx < stopX {
-            draw(content.borderFrames[6], in: NSRect(x: sx, y: 0, width: 64, height: topH))
-            draw(content.borderFrames[7], in: NSRect(x: sx, y: h - topH, width: 64, height: topH))
+        // 上下边（box[6]/box[7]，64×15）：x 从 64 到 w-128，网格对齐恰好铺满
+        var sx: CGFloat = 64
+        while sx < w - 64 {
+            drawSDL(content.borderFrames[6], sx, 0)
+            drawSDL(content.borderFrames[7], sx, h - 15)
             sx += 64
         }
 
-        // 左右边（沿 y 步进）
-        let stopY = h - cornerH
-        var sy = cornerH
-        while sy < stopY {
-            draw(content.borderFrames[4], in: NSRect(x: 0, y: sy, width: sideW, height: 64))
-            draw(content.borderFrames[5], in: NSRect(x: w - sideW, y: sy, width: sideW, height: 64))
+        // 左右边（box[4]/box[5]，14×64）：y 从 64 到 h-128，网格对齐恰好铺满
+        var sy: CGFloat = 64
+        while sy < h - 64 {
+            drawSDL(content.borderFrames[4], 0, sy)
+            drawSDL(content.borderFrames[5], w - 14, sy)
             sy += 64
         }
+
+        // 四角（box[0..3]，64×64）
+        drawSDL(content.borderFrames[0], 0, 0)
+        drawSDL(content.borderFrames[1], w - 64, 0)
+        drawSDL(content.borderFrames[2], 0, h - 64)
+        drawSDL(content.borderFrames[3], w - 64, h - 64)
     }
 }
 
@@ -163,7 +174,6 @@ final class AboutView: NSView {
     private let logoView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let versionLabel = NSTextField(labelWithString: "")
-    private let authorLabel = NSTextField(labelWithString: "")
     private let copyrightLabel = NSTextField(labelWithString: "")
     private let okButton = NSButton()
     private var timer: Timer?
@@ -193,9 +203,6 @@ final class AboutView: NSView {
         versionLabel.stringValue = "v\(content.version)"
         versionLabel.textColor = #colorLiteral(red: 0.75, green: 0.72, blue: 0.62, alpha: 1)
 
-        authorLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        authorLabel.stringValue = NSLocalizedString("About.Author", value: "By steven0lisa", comment: "作者")
-
         copyrightLabel.font = NSFont.systemFont(ofSize: 11)
         copyrightLabel.stringValue = content.copyright
         copyrightLabel.textColor = #colorLiteral(red: 0.6, green: 0.58, blue: 0.5, alpha: 1)
@@ -205,7 +212,7 @@ final class AboutView: NSView {
         logoView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(logoView)
 
-        for v in [nameLabel, versionLabel, authorLabel, copyrightLabel] {
+        for v in [nameLabel, versionLabel, copyrightLabel] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -215,9 +222,8 @@ final class AboutView: NSView {
         okButton.isBordered = false
         okButton.imagePosition = .imageOnly
         if let ok = content.okFrames.first {
-            okButton.image = ok
+            okButton.image = ok   // IOKAY32 帧自带金色对勾，不再叠文字
         }
-        okButton.title = NSLocalizedString("About.OK", value: "OK", comment: "OK")
         okButton.controlSize = .large
         okButton.target = self
         okButton.action = #selector(okPressed)
@@ -230,26 +236,27 @@ final class AboutView: NSView {
             borderView.leadingAnchor.constraint(equalTo: leadingAnchor),
             borderView.trailingAnchor.constraint(equalTo: trailingAnchor),
 
+            // 以下内容都落在边框内的内容区（上/下让出 borderTop=15，左右让出 14）
             logoView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            logoView.topAnchor.constraint(equalTo: topAnchor, constant: 74),
+            logoView.topAnchor.constraint(equalTo: topAnchor,
+                                          constant: 74 + Heroes3BorderView.borderTop),
             logoView.widthAnchor.constraint(equalToConstant: 128),
             logoView.heightAnchor.constraint(equalToConstant: 103),
 
             nameLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             nameLabel.topAnchor.constraint(equalTo: logoView.bottomAnchor, constant: 18),
-            nameLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 70),
+            nameLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor,
+                                               constant: 70 + Heroes3BorderView.borderLeft),
 
             versionLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             versionLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
 
-            authorLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            authorLabel.topAnchor.constraint(equalTo: versionLabel.bottomAnchor, constant: 12),
-
             copyrightLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            copyrightLabel.topAnchor.constraint(equalTo: authorLabel.bottomAnchor, constant: 6),
+            copyrightLabel.topAnchor.constraint(equalTo: versionLabel.bottomAnchor, constant: 12),
 
             okButton.centerXAnchor.constraint(equalTo: centerXAnchor),
-            okButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -24),
+            okButton.bottomAnchor.constraint(equalTo: bottomAnchor,
+                                             constant: -24 - Heroes3BorderView.borderTop),
             okButton.widthAnchor.constraint(equalToConstant: 66),
             okButton.heightAnchor.constraint(equalToConstant: 32),
         ])

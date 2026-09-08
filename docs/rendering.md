@@ -116,20 +116,31 @@ EDG.DEF 36 帧 + `getIndexForTile` 公式（formats.md §5）。
 
 ## 9. About 对话框（heroes3 风格 UI，VCMI CMessage 对照）
 
-About 窗口的对话框观感按 VCMI 信息窗还原，两条规则都曾被想当然写错：
+About 窗口的对话框观感按 VCMI 信息窗还原，三条规则都曾被想当然写错：
 
-- **边框**：`CMessage::drawBorder`（client/windows/CMessage.cpp）**只用 DIALGBOX.DEF
+- **边框位置——画在内容区外扩矩形上，不是窗口内缩处**：VCMI `CWindowObject::showAll`
+  （BORDERED）调用 `CMessage::drawBorder(color, to, pos.w+28, pos.h+29, pos.x-14, pos.y-15)`
+  ——内容区四周**外扩 左右 14px / 上下 15px** 才是边框画布。Swift 侧等价做法：窗口 =
+  内容 + 2×(14/15)，边框以整窗为画布绘制（SDL 顶左 y 向下 → NSView 底左 y 向上，
+  换算 `nsY = winH - sdlY - frameH`）。
+- **边框贴图**：`CMessage::drawBorder`（client/windows/CMessage.cpp）**只用 DIALGBOX.DEF
   的 box[0..7]**——box[0..3] 四角（64×64）贴四角，box[4/5] 左右边（14×64）、
   box[6/7] 上下边（64×15）沿轴步进平铺；绘制顺序"先边后角"（角覆盖边）。
   **box[8..10] 完全不参与**（其内部像素是色键，不是内部背景）。
   想当然的"9-slice 把 box[8] 平铺当内部"是首版青色网格的根因之一。
+- **窗口尺寸取 64px 网格（128+64k）**：边条步进 64px，窗口 512×448 时上下边恰好
+  6 条、左右边恰好 5 条，**无缝隙、无重叠**。VCMI 的 drawBorder 里 bottom/right 有
+  `+1` 重叠补缝，是任意尺寸下的兜底；网格对齐后即不需要。
 - **内部背景**：`CInfoWindow` 用 `CFilledTexture(ImagePath::builtin("DiBoxBck"), pos)`
   （client/windows/InfoWindows.cpp），`showAll` 是**平铺**（x/y 按 tile 尺寸步进，
-  非拉伸）——棕纸纹理 DIBOXBCK.PCX 铺满整个窗口，边框叠在其上。
+  非拉伸）——棕纸纹理 DIBOXBCK.PCX 铺满内容区，边框叠在其上；边框贴图透明缝隙处
+  需整窗兜底色（取自 DIBOXBCK 的深棕），否则 borderless 窗口露白底。
 - 颜色：边框的玩家色段 224–255 在 DIALGBOX 自带调色板里就是蓝方渐变
   （见 formats.md §2.7），无需重染；内部纸底主色 `(116,75,42)` 棕系。
   "深蓝内部"的印象来自 H3 后期 UI 或 VCMI 皮肤，原版 DIALOG 即棕底蓝框。
+- **OK 按钮**：IOKAY32 帧自带金色对勾，NSButton 设 `imagePosition = .imageOnly` 后
+  **不要再设 `.title`**（title 会复写回文字显示模式）；无文字也不需要本地化键。
 
-实现：`AboutWindowController.swift`（Heroes3BorderView：background 平铺 +
-box[0..7] 平铺）与 `scripts/export_about_assets.py`（DIALGBOX 色键透明 +
-DIBOXBCK.PCX → background.png）；坑详录 pitfalls #22。
+实现：`AboutWindowController.swift`（Heroes3BorderView：兜底色 + background 平铺 +
+box[0..7] 以整窗为画布平铺）与 `scripts/export_about_assets.py`（DIALGBOX 色键透明 +
+DIBOXBCK.PCX → background.png）；坑详录 pitfalls #22/#25。
