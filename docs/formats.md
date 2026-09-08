@@ -28,7 +28,9 @@
 - `compressedSize == 0` → 原样存储，读 `size` 字节。
 - H3sprite.lod 共 4013 条目（2565 个 `.def`），是冒险地图渲染的唯一素材来源
   （地形 TIL 文件在 VCMI 中也以 DEF 形式从 lod 读取，仓库内不存在任何 `.til` 解析代码）。
-- H3bitmap.lod 与 H3ab_bmp.lod 主要放 PCX/MSK 等，本项目不需要。
+- H3bitmap.lod 与 H3ab_bmp.lod 主要放 PCX/MSK 等界面素材；地图渲染不用它们，但
+  **About 窗口的构建期导出需要 H3bitmap.lod**：`DIBOXBCK.PCX`（对话框内部纸底，§7）
+  与 `DATA/PLAYERS.PAL`（玩家色表，§2.5）。
 
 ## 2. `.def` 精灵文件
 
@@ -138,6 +140,54 @@ VCMI `config/terrains.json` / `rivers.json` 为部分 def 声明轮转区间
 `new[(i+d) % len] = old[start+i]`。多区间时每步同时对所有区间轮转；
 总周期 = 各区间长度的最小公倍数（水 = 12，泥河 = 12）。APK 版用另一种等价实现：
 把调色板整体复制后反复 `rotatePalette` 直到回到原调色板（生成 N 个变体帧）。
+
+### 2.7 玩家色占位段：调色板索引 224–255（32 色）
+
+DEF 内嵌调色板的 **224–255 段是玩家色占位符**（界面精灵的边框/装饰色）。
+VCMI `Graphics::setPlayerPalette`（client/render/Graphics.cpp）运行时用
+`DATA/PLAYERS.PAL`（存于 H3bitmap.lod，1168 字节 = 4B 头 + 8 玩家 × 32 色 × 4B
+BGRA，颜色数据从偏移 24 起）整体替换该段：
+
+```
+SDL_SetPaletteColors(targetPalette, palette, 224, 32)   // 8 玩家按序：红/蓝/棕/绿/橙/紫/青/粉
+```
+
+- 第 i 玩家 = PLAYERS.PAL 偏移 `24 + i*32*4` 起的 32 个 RGBA（每项第 4 字节是
+  flags 非 alpha）。蓝方（i=1）实测深蓝系 `(19,31,64)…(40,65,139)…(108,122,163)`。
+- **DIALGBOX.DEF 自带调色板的 224–255 段恰好就是蓝方这组渐变**（VCMI
+  `CMessage::init` 注释 "assume blue color initially"、仅 `i != 1` 才重染），
+  所以蓝框 UI 精灵直接用 def 内嵌调色板即得原版观感，无需 PLAYERS.PAL 重染；
+  其余玩家色的 UI 才需要替换。
+- 与 index 5（旗帜色）的区别：5 是**单色**玩家旗色，224–255 是 **32 阶渐变**
+  的玩家色界面（边框立体感靠这组渐变）。
+- 与 §2.5 品红占位色的区别：品红 (255,0,255) 系是 index 1/4/6/7 阴影位，
+  青色 (0,255,255) 是 **index 0 的色键占位色**——DIALGBOX 的 index 0 调色板
+  颜色就是纯青，box[0..3]/box[8] 内部约 58–59% 像素引用 idx0，全部是
+  "待透明"区域（VCMI `EImageBlitMode::COLORKEY`）。导出工具若不处理色键，
+  整片青色会被画成不透明（About 窗口首版"青色网格"即此坑，见 pitfalls #22）。
+
+### 2.8 H3 式 PCX（lod 内的 .PCX，如 DIBOXBCK.PCX）
+
+lod 里的 PCX **不是**标准 PCX 文件头（man/version/bpp 全为 0 的假头），是
+H3 私有布局，解压后按 VCMI `CBitmapHandler::loadH3PCX`（client/render/
+CBitmapHandler.cpp）解析：
+
+```
+解压后 blob:
+u32 fSize     // 有效判定：== w*h → 8bit 索引模式；== w*h*3 → 24bit RGB 模式
+u32 width
+u32 height
+u8  data[]    // 从偏移 0x0C 起。8bit 模式 = w*h 个调色板索引（逐行，无 RLE）；
+              // 24bit 模式 = w*h*3 个 RGB 字节
+u8  palette[768]  // 仅 8bit 模式：文件末尾 256×BGR 调色板（起始于 len-768）
+```
+
+- lod 条目本身 zlib 压缩（带 0x78 头，Python `zlib.decompress` 直接可用）；
+  DIBOXBCK.PCX 解压后 66316 = 12 + 65536 + 768（256×256 的 8bit 图）。
+- **index 0 = 色键透明**（VCMI 同样以 COLORKEY 语义加载 PCX）；DIBOXBCK 其余
+  为棕色纸纹理（主色 `(116,75,42)` 系）——原版对话框 = 棕纸底 + 蓝边框
+  （非深蓝底，见 rendering.md §9）。
+- 24bit 模式无需调色板（代码里两分支都要保留，其他 PCX 有 24bit 的）。
 
 ## 3. `.h3m` 地图文件（RoE=14 / AB=21 / SoD=28）
 

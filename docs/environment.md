@@ -8,8 +8,9 @@
 
 | 路径 | 用途 |
 |---|---|
-| `~/Library/Application Support/vcmi/Data/H3sprite.lod` | **唯一素材来源**：地形/河流/道路/边界/全部冒险物件 def（4013 条目，2565 def） |
-| 同目录 `H3bitmap.lod` / `H3ab_bmp.lod` / `H3ab_spr.lod` | PCX/MSK/界面素材，本项目不用 |
+| `~/Library/Application Support/vcmi/Data/H3sprite.lod` | **地图渲染唯一素材来源**：地形/河流/道路/边界/全部冒险物件 def（4013 条目，2565 def）；About 窗口的天使动画（cangel.def）、DIALGBOX、IOKAY32 也从这里导出 |
+| 同目录 `H3bitmap.lod` | PCX/界面素材。**构建期需要**：About 对话框内部纸底 `DIBOXBCK.PCX`、玩家色表 `PLAYERS.PAL`（暂未导出，见 formats.md §2.7/§2.8） |
+| 同目录 `H3ab_bmp.lod` / `H3ab_spr.lod` | 其余 PCX/MSK，本项目不用 |
 
 这些是 VCMI 安装时复制的原版游戏文件（版权属 Ubisoft/NWC，本仓库不含）。
 换机器时把任意一份 HoMM3 Complete 的 `H3sprite.lod` 放到上述位置，或通过菜单栏
@@ -39,8 +40,16 @@
 ## 命令速查
 
 ```bash
-./scripts/build_app.sh            # 构建 release 并打包 .app
+./scripts/build_app.sh            # 构建 release 并打包 .app（含 About 资源导出 + i18n + dmg）
 open build/Heroes3Wallpaper.app   # 启动壁纸（菜单栏 🏰）
+
+# About 窗口无头验证：启动后 0.9s 自动弹出 About（配合 Quartz 枚举窗口 + screencapture -l<id> 截图）
+open build/Heroes3Wallpaper.app --args --about
+
+# 手动重导 About 精灵（一般由 build_app.sh 调用；需 H3sprite.lod 同目录有 H3bitmap.lod）
+python3 scripts/export_about_assets.py \
+    "$HOME/Library/Application Support/vcmi/Data/H3sprite.lod" \
+    build/Heroes3Wallpaper.app/Contents/Resources/about
 
 # 无头渲染单帧（验证/调试）
 .build/release/Heroes3Wallpaper --snapshot "<map.h3m>" --out out.png \
@@ -54,3 +63,8 @@ open build/Heroes3Wallpaper.app   # 启动壁纸（菜单栏 🏰）
 # 渲染对比基准（编辑器与游戏共用渲染器）
 /Applications/VCMI.app/Contents/MacOS/vcmieditor "<map.h3m>"
 ```
+
+版本号机制：`CFBundleShortVersionString=x.y.z`（默认 1.0.0，可 `MARKETING_VERSION=` 覆盖）
++ `CFBundleVersion=<build_number>`（默认 `date +%Y%m%d%H%M`，可 `BUILD_NUMBER=` 覆盖）；
+About 窗口显示 `x.y.z-build_number`。i18n：`Resources/{en,zh-Hans}.lproj/Localizable.strings`，
+菜单/About 文案走 NSLocalizedString 跟随系统语言。

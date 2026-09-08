@@ -113,3 +113,23 @@ EDG.DEF 36 帧 + `getIndexForTile` 公式（formats.md §5）。
 # 打开编辑器看同一地图（vcmieditor 与游戏共用渲染器）
 /Applications/VCMI.app/Contents/MacOS/vcmieditor "<map.h3m>"
 ```
+
+## 9. About 对话框（heroes3 风格 UI，VCMI CMessage 对照）
+
+About 窗口的对话框观感按 VCMI 信息窗还原，两条规则都曾被想当然写错：
+
+- **边框**：`CMessage::drawBorder`（client/windows/CMessage.cpp）**只用 DIALGBOX.DEF
+  的 box[0..7]**——box[0..3] 四角（64×64）贴四角，box[4/5] 左右边（14×64）、
+  box[6/7] 上下边（64×15）沿轴步进平铺；绘制顺序"先边后角"（角覆盖边）。
+  **box[8..10] 完全不参与**（其内部像素是色键，不是内部背景）。
+  想当然的"9-slice 把 box[8] 平铺当内部"是首版青色网格的根因之一。
+- **内部背景**：`CInfoWindow` 用 `CFilledTexture(ImagePath::builtin("DiBoxBck"), pos)`
+  （client/windows/InfoWindows.cpp），`showAll` 是**平铺**（x/y 按 tile 尺寸步进，
+  非拉伸）——棕纸纹理 DIBOXBCK.PCX 铺满整个窗口，边框叠在其上。
+- 颜色：边框的玩家色段 224–255 在 DIALGBOX 自带调色板里就是蓝方渐变
+  （见 formats.md §2.7），无需重染；内部纸底主色 `(116,75,42)` 棕系。
+  "深蓝内部"的印象来自 H3 后期 UI 或 VCMI 皮肤，原版 DIALOG 即棕底蓝框。
+
+实现：`AboutWindowController.swift`（Heroes3BorderView：background 平铺 +
+box[0..7] 平铺）与 `scripts/export_about_assets.py`（DIALGBOX 色键透明 +
+DIBOXBCK.PCX → background.png）；坑详录 pitfalls #22。

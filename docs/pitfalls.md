@@ -258,3 +258,57 @@ Web 导出的 PNG 需要反预乘回直通 alpha（本项目图集阴影全黑�
 
 **定位**：对照 Swift `H3mFile.swift` —— 头是 i32 version, **i8** hasPlayers, i32 size, i8 hasUnder。
 Python 用 `struct.unpack_from("<i", raw, 5)` 才对（i32 从偏移 5 开始读，越过 hasPlayers 字节）。
+
+## 22. About 对话框青色网格——色键未透明 + 误把 box[8] 当内部背景（双根因）
+
+**现象**：About 窗口对话框内部被青色 (0,255,255) 网格铺满；而原版 heroes3
+对话框应是棕色纸底 + 蓝色雕花边框。用户截图直出。
+
+**定位**（逐帧统计 + 对照 VCMI 源码三个文件）：
+- 逐帧统计 DIALGBOX 11 帧：box[0..3] 青色占 59%、box[8] 占 58%、box[4..7] 为 0%
+  → 青色集中在"边框外侧与框内"两处。
+- `CBitmapHandler`/`CDefFile`：**青色 = DEF 调色板 index 0 的颜色**（DIALGBOX 的
+  palette[0] 就是纯青），即色键；VCMI 以 `EImageBlitMode::COLORKEY` 加载使 idx0
+  全透明。导出脚本的 `colorKey` 分支压根没实现（只有 shadows 语义），色键像素
+  被画成不透明青色——这是"为什么青色可见"。
+- `CMessage::drawBorder`（client/windows/CMessage.cpp）：**只画 box[0..7]**（四角
+  box[0..3] + 四边 box[4/5] 左右 14×64、box[6/7] 上下 64×15），box[8..10] 不参与；
+  `CInfoWindow` 的内部背景是 `CFilledTexture("DiBoxBck")`（InfoWindows.cpp），
+  `showAll` 平铺 **DIBOXBCK.PCX** 棕纸纹理。把 box[8] 当"9-slice 内部"平铺是
+  第一个想当然——box[8] 内部 58% 是色键，平铺必然出网格——这是"为什么铺满内部"。
+
+**修复**：`frame_to_rgba` 补 `colorKey` 分支（idx0 → alpha 0）；新增 H3 式 PCX
+解码（formats.md §2.8）从 H3bitmap.lod 导出 `background.png`；`Heroes3BorderView`
+改为 background 平铺 + 只画 box[0..7]。截图复验棕底蓝框正常。
+
+**教训**：
+1. **占位色有两种**——品红系 (255,0,255) 是 index 1/4/6/7 阴影位，青色 (0,255,255)
+   是 index 0 色键；UI 精灵（COLORKEY 模式）与物件精灵（WITH_SHADOW 模式）的
+   透明语义不同，导出工具必须按精灵类型分支。
+2. "9-slice"是想象，VCMI 的 `drawBorder` 用"4 角 + 4 边"拼框、内部另铺一张
+   纹理；抄 UI 布局前先读渲染函数本体，别按通用图形学套路套。
+3. 大面积"诡异纯色"出现时，第一时间反查调色板索引分布（哪个 index、占比多少），
+   比"改代码试试"快得多。
+
+## 23. PNG 导出黑图——每扫描行缺 filter byte（write_png）
+
+**现象**：导出的 about PNG 被 PIL 报 `OSError: unrecognized data stream contents`
+，NSImage 解码失败，About 窗口整体黑/空白。
+**定位**：手写 PNG 的 IDAT 直接放了 RGBA 原始数据。PNG 规范要求**每个扫描行
+前有一个 filter-type 字节**（0x00=None 即可），缺失即整流非法。
+**修复**：逐行 `append(0)` 后再拼该行 RGBA；`zlib.compress(..., 9)`。
+**教训**：手写 PNG 编码器时 filter byte 是最易漏的一环；漏掉的症状是
+"解码器直接拒绝"而不是"图错"，用 PIL `Image.open(...).load()` 做导出自检
+（顺带统计非透明像素数）能在打包前拦住。
+
+## 24. NSWindow 内容约束崩溃——子视图未 addSubview 就进 NSLayoutConstraint
+
+**现象**：`--about` 启动即崩、窗口不出现；直接跑二进制见
+`NSGenericException: unable to satisfy constraints ... because they have no
+common ancestor`。
+**定位**：`logoView` 只被引用了约束（`logoView.centerXAnchor == centerXAnchor`），
+漏了 `addSubview(logoView)`——无公共祖先的约束对在 activate 时抛异常。
+**修复**：约束激活前补 `addSubview`（labels 循环里本来就有，唯独 logo 漏了）。
+**教训**：AppKit 没有像 SwiftUI 那样的"声明即挂载"；NSView 层级是命令式累积的，
+新控件先 addSubview 再上约束。LSUIElement 应用的崩溃日志不进 Console.app 的
+常规位置，直接命令行跑二进制看 stderr 最快。
