@@ -201,7 +201,13 @@ class DefFile:
 
 
 def frame_to_rgba(fr, palette, blit="shadows"):
-    """Convert a palette-indexed frame to premultiplied-ish RGBA using hero3 semantics."""
+    """Convert a palette-indexed frame to premultiplied-ish RGBA using hero3 semantics.
+
+    blit="colorKey": index 0 = transparent color key (VCMI EImageBlitMode::COLORKEY) —
+    used by DIALGBOX/IOKAY32 UI sprites. Without this, palette[0] (cyan 0,255,255 in
+    DIALGBOX) paints opaque and the About interior becomes a cyan grid.
+    blit="shadows": indices 1/4 (+7/6) are translucent-black shadows (unit sprites).
+    """
     w, h = fr["w"], fr["h"]
     indices = fr["indices"]
     out = bytearray(w * h * 4)
@@ -212,7 +218,10 @@ def frame_to_rgba(fr, palette, blit="shadows"):
         g = palette[pi + 1] if pi + 2 < len(palette) else 0
         b = palette[pi + 2] if pi + 2 < len(palette) else 0
         a = 255
-        if blit == "shadows":
+        if blit == "colorKey":
+            if idx == 0:
+                a = 0
+        elif blit == "shadows":
             if idx == 0:
                 a = 0
             elif idx in (1, 7):
@@ -230,6 +239,36 @@ def frame_to_rgba(fr, palette, blit="shadows"):
         out[p] = r; out[p + 1] = g; out[p + 2] = b; out[p + 3] = a
         p += 4
     return bytes(out)
+
+
+def h3pcx_to_rgba(blob):
+    """Decode an H3-style PCX (CBitmapHandler::loadH3PCX layout):
+    header 12 bytes = [fSize u32][width u32][height u32]; raw 8-bit indices at 0xC;
+    last 768 bytes = 256-color BGR palette. Index 0 is the color key (transparent).
+    """
+    fsize, w, h = struct.unpack_from("<3I", blob, 0)
+    if fsize != w * h and fsize != w * h * 3:
+        raise SystemExit(f"not an H3 PCX: fsize={fsize} {w}x{h}")
+    pal_off = len(blob) - 768
+    out = bytearray(w * h * 4)
+    p = 0
+    for y in range(h):
+        row = 0xC + y * w * (3 if fsize == w * h * 3 else 1)
+        for x in range(w):
+            if fsize == w * h * 3:  # 24-bit: RGB triplets
+                q = row + x * 3
+                r, g, b = blob[q], blob[q + 1], blob[q + 2]
+                out[p] = r; out[p + 1] = g; out[p + 2] = b; out[p + 3] = 255
+            else:
+                idx = blob[row + x]
+                if idx == 0:
+                    out[p + 3] = 0
+                else:
+                    q = pal_off + idx * 3
+                    out[p] = blob[q]; out[p + 1] = blob[q + 1]
+                    out[p + 2] = blob[q + 2]; out[p + 3] = 255
+            p += 4
+    return w, h, bytes(out)
 
 
 def write_png(path, w, h, rgba):
@@ -316,6 +355,22 @@ def main():
             rgba = frame_to_rgba(fr, ok.palette, "colorKey")
             write_png(os.path.join(out_dir, f"iokay32_{i}.png"), fr["w"], fr["h"], rgba)
         print(f"  wrote iokay32_0..{len(frames)-1}.png")
+
+    # 4) Dialog interior background: DIBOXBCK.PCX from H3bitmap.lod (VCMI CFilledTexture
+    # tiles this brown paper texture inside CInfoWindow; drawBorder only draws the border).
+    bitmap_lod = os.path.join(os.path.dirname(lod_path), "H3bitmap.lod")
+    if os.path.isfile(bitmap_lod):
+        bdata, bentries = parse_lod(bitmap_lod)
+        entry = bentries.get("DIBOXBCK.PCX")
+        if entry:
+            blob = lod_contents(bdata, entry)
+            w, h, rgba = h3pcx_to_rgba(blob)
+            write_png(os.path.join(out_dir, "background.png"), w, h, rgba)
+            print(f"  DIBOXBCK.PCX: wrote background.png ({w}x{h})")
+        else:
+            print("  MISSING lod entry: DIBOXBCK.PCX")
+    else:
+        print("  no H3bitmap.lod next to sprite lod, skip background")
 
     print("done ->", out_dir)
 

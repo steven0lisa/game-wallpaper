@@ -47,6 +47,8 @@ final class AboutContent {
     private(set) var borderFrames: [Int: NSImage] = [:]
     /// OK 按钮 4 帧（released / pressed / disabled / blocked）。
     private(set) var okFrames: [NSImage] = []
+    /// 对话框内部棕色纸底（DIBOXBCK.PCX，平铺）。
+    private(set) var background: NSImage?
 
     let author = "steven0lisa"
     let appName: String
@@ -73,24 +75,21 @@ final class AboutContent {
         for i in 0..<7 {
             if let im = img("logo_\(i)") { logoFrames.append(im) }
         }
-        var corner: [Int] = []
         for i in 0..<11 {
-            if let im = img("dialogbox_\(i)") {
-                borderFrames[i] = im
-                if i <= 3 { corner.append(i) }
-            }
+            if let im = img("dialogbox_\(i)") { borderFrames[i] = im }
         }
         for i in 0..<4 {
             if let im = img("iokay32_\(i)") { okFrames.append(im) }
         }
-        let _ = corner
+        background = img("background")
     }
 
     var logoCount: Int { max(logoFrames.count, 1) }
     func logoFrame(_ i: Int) -> NSImage? { logoFrames.isEmpty ? nil : logoFrames[i % logoFrames.count] }
 }
 
-/// heroes3 对话框边框绘制（模拟 VCMI drawBorder 的 9-slice 平铺）。
+/// heroes3 对话框边框绘制：内部 DIBOXBCK 纸底平铺 + DIALGBOX 四角/四边
+/// （对齐 VCMI CMessage::drawBorder——box[0..7]，box[8..10] 的内部是色键不作背景）。
 final class Heroes3BorderView: NSView {
     var content: AboutContent?
     var borderColor: NSColor = #colorLiteral(red: 0.22, green: 0.30, blue: 0.55, alpha: 1) { didSet { needsDisplay = true } }
@@ -101,22 +100,22 @@ final class Heroes3BorderView: NSView {
             return
         }
         let w = bounds.width, h = bounds.height
-        // 内部填充：dialogbox_8（深蓝）
-        if let interior = content.borderFrames[8] {
-            let img = interior
-            let tile = img.size
+        // 内部填充：DIBOXBCK.PCX 棕色纸纹理平铺（VCMI CFilledTexture::showAll 同款；
+        // drawBorder 只画边框 box[0..7]，box[8..10] 不是内部背景，其内部是色键）
+        if let bg = content.background {
+            let tile = bg.size
             var y: CGFloat = 0
             while y < h {
                 var x: CGFloat = 0
                 while x < w {
-                    img.draw(in: NSRect(x: x, y: y, width: tile.width, height: tile.height),
+                    bg.draw(in: NSRect(x: x, y: y, width: tile.width, height: tile.height),
                              from: NSRect(origin: .zero, size: tile), operation: .copy, fraction: 1)
                     x += tile.width
                 }
                 y += tile.height
             }
         } else {
-            NSColor(calibratedRed: 0.08, green: 0.12, blue: 0.25, alpha: 1).setFill()
+            NSColor(calibratedRed: 0.19, green: 0.13, blue: 0.08, alpha: 1).setFill()
             bounds.fill()
         }
 
