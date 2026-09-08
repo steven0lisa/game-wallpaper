@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let floating = CommandLine.arguments.contains("--level-floating") // verification aid
         let controller = WallpaperWindowController(renderer: renderer, floating: floating)
         controller.view.delegate = presenter
+        presenter.renderView = controller.view // 电池模式经此 isPaused 停/启渲染循环
         self.windowController = controller
 
         // Web 地图查看器：点击菜单项时才启动服务（省内存/CPU）

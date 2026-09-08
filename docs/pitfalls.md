@@ -375,3 +375,19 @@ min=286 / median=400 / max=612 MB，无单调增长；残余波动为不同地�
 大小差异与 malloc 未归还页，正常。
 **教训**：`sample` 先排除 CPU 热点，再按"哪些集合只进不出"排查——
 长生命周期 App 里，一切无淘汰策略的缓存都会成为内存曲线的斜率。
+
+## 28. 电池模式策略：从"1fps 慢放"改为"完全停止渲染"（0fps）
+
+**原设计**：电池供电时 1fps + 冻结相机（`camera.setFrozen`），每 3 秒在 draw 回调里
+复查供电。**问题**：draw 回调驱动的供电检查在暂停渲染后即失效；且 1fps 下天使动画、
+换图计时、跳点仍在走，并不"省到底"。
+**新设计**（2026-09-08）：
+- `MapPresenter` 持独立 `powerCheckTimer`（60s 间隔，主循环 common modes）——
+  **电源复查绝不能依赖 draw 回调**，否则停渲染后永远检不回来；
+- 检测到电池：`renderView.isPaused = true`（连 MTKView 的 display-link timer 一起停，
+  draw 早退只是不提交，timer 仍会按旧帧率空醒）+ `lastTimestamp = nil`（复位 dt）；
+  画面完全静止、不换图、不跳点；插电恢复渲染与计时。
+- `onBattery` 变为 `private(set)` 缓存值，draw 只读不清（draw 里原 3s 轮询已删）。
+**教训**：凡"状态驱动的降载"若依赖被降载路径本身的回调做恢复检查，必须把检查
+移到独立定时器/事件源；isPaused 才是停 display-link 的正确开关（preferredFramesPerSecond=0
+无效，draw 早退也不省 timer 唤醒）。

@@ -102,17 +102,40 @@ final class MapPresenter: NSObject, MTKViewDelegate {
     }
     private var cameraConfig: CameraConfig?
     private var elapsedMs: Double = 0
-    private var onBattery = false
-    private var lastPowerCheck: CFTimeInterval = 0
-    private var lastTimestamp: CFTimeInterval?
     private(set) var mapURLs: [URL] = []
     private var currentIndex = 0
     private(set) var loading = false
+    /// 电池供电：暂停渲染循环（0fps、画面完全静止），不换图不跳点
+    private(set) var onBattery = false
+    /// 电源复查定时器（电池时 draw 不再执行，检查必须独立于渲染循环）
+    private var powerCheckTimer: Timer?
+    private var lastTimestamp: CFTimeInterval?
+    /// 渲染视图弱引用（电池时 isPaused 停掉 MTKView 的 display-link timer）
+    weak var renderView: MTKView?
     /// 换图时回调（作废 WebViewer 场景缓存等）；由 AppDelegate 装配。
     var onMapChanged: (() -> Void)?
 
     init(renderer: MapRenderer) {
         self.renderer = renderer
+        super.init()
+        startPowerCheckTimer()
+    }
+
+    /// 每分钟复查供电状态：电池 → isPaused 停渲染循环；插电 → 恢复。
+    /// 定时器在主循环（common modes）上，休眠期间不触发，唤醒后立即纠正。
+    private func startPowerCheckTimer() {
+        powerCheckTimer?.invalidate()
+        powerCheckTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            let battery = Self.onBatteryPower()
+            guard battery != self.onBattery else { return }
+            self.onBattery = battery
+            self.lastTimestamp = nil // 复位 dt，避免恢复瞬间跳变
+            self.renderView?.isPaused = battery   // 电池：连 MTKView 的 timer 一起停
+            NSLog("Heroes3Wallpaper: power %@ → render %@",
+                  battery ? "on battery" : "restored",
+                  battery ? "paused" : "resumed")
+        }
     }
 
     /// Effective zoom: at least the cover zoom, so the map always covers the full view.
@@ -207,21 +230,15 @@ final class MapPresenter: NSObject, MTKViewDelegate {
         let dt = lastTimestamp.map { min(now - $0, 0.25) } ?? 0
         lastTimestamp = now
 
-        // 电池供电：冻结漫游、刷新率降到 1fps 省电；每 3 秒复查供电状态
-        if now - lastPowerCheck > 3 {
-            lastPowerCheck = now
-            onBattery = Self.onBatteryPower()
-        }
-        // 相机停留期（占绝大头）动画每 180ms 才变一步，5fps（200ms）采样足够覆盖每一步
-        // 且消除约一半的重复帧提交；平移过渡保持 30fps，电池模式 1fps。
-        let targetFps: Int
+        // 电池供电：画面完全静止（暂停渲染循环）、不换图、不跳点；
+        // 电源复查不依赖 draw 回调（见 powerCheckTimer），此处只读缓存值。
         if onBattery {
-            targetFps = 1
-        } else if camera.isAtRest {
-            targetFps = 5
-        } else {
-            targetFps = 30
+            return
         }
+
+        // 相机停留期（占绝大头）动画每 180ms 才变一步，5fps（200ms）采样足够覆盖每一步
+        // 且消除约一半的重复帧提交；平移过渡保持 30fps。
+        let targetFps = camera.isAtRest ? 5 : 30
         if view.preferredFramesPerSecond != targetFps {
             view.preferredFramesPerSecond = targetFps
         }
@@ -255,10 +272,7 @@ final class MapPresenter: NSObject, MTKViewDelegate {
                                       switchInterval: cameraJumpInterval)
                 }
             }
-            // 电池模式：冻镜
-            self.camera.setFrozen(onBattery)
-            self.camera.update(dt: onBattery ? 0 : dt, mapSizePx: mapSizePx, viewW: viewW, viewH: viewH)
-            if onBattery { self.camera.setFrozen(false) } // 恢复标志位（update 内已生效）
+            self.camera.update(dt: dt, mapSizePx: mapSizePx, viewW: viewW, viewH: viewH)
             renderer.buildFrame(map: cm.map, atlas: cm.atlas,
                                 view: MapRenderer.Viewport(
                                     viewLeft: camera.center.x - viewW / 2,
