@@ -8,6 +8,9 @@ import IOKit.ps
 final class WallpaperWindowController {
     private var windows: [NSWindow] = []
     let view: MTKView
+    /// 屏幕休眠期间暂停渲染循环（DisplayLink 停发回调本应自然省电，但 MTKView
+    /// 常驻 timer 仍可能空转；显式 isPaused 兜底，唤醒即恢复）。
+    private var sleepObserver: (Any, NSObjectProtocol)?
 
     init(renderer: MapRenderer, floating: Bool = false) {
         view = MTKView(frame: .zero, device: renderer.device)
@@ -38,11 +41,28 @@ final class WallpaperWindowController {
             win.orderFrontRegardless()
             windows.append(win)
         }
+
+        // 屏幕休眠（显示器关闭）时暂停 Metal 渲染循环，唤醒后自动恢复。
+        // 定义队列 nil = 投递到主线程，与 MTKView 的线程约束一致。
+        let center = NSWorkspace.shared.notificationCenter
+        sleepObserver = (center,
+                         center.addObserver(forName: NSWorkspace.screensDidSleepNotification,
+                                            object: nil, queue: .main) { [weak view] _ in
+            view?.isPaused = true
+        })
+        center.addObserver(forName: NSWorkspace.screensDidWakeNotification,
+                           object: nil, queue: .main) { [weak view] _ in
+            view?.isPaused = false
+        }
     }
 
     func hide() {
         for win in windows { win.orderOut(nil) }
         windows.removeAll()
+        if let (center, token) = sleepObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(token)
+            sleepObserver = nil
+        }
     }
 }
 
