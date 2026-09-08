@@ -144,29 +144,35 @@ enum SnapshotCLI {
             print("probe: cannot load \(name)")
             return
         }
-        print("def \(name): type=0x\(String(def.type, radix: 16)) full=\(def.fullWidth)x\(def.fullHeight) blocks=\(def.blocks.count)")
+        print("def \(name): type=0x\(String(def.type, radix: 16)) full=\(def.fullWidth)x\(def.fullHeight) blocks=\(def.blocks.count) mode=\(DefRaster.mode(forDefName: name))")
+        // 每个索引对应的 RGB（前 200 索引），便于判断"用到的索引是不是白/品红/亮色"
+        func idxRGB(_ i: Int) -> String {
+            let p = i * 3
+            guard p + 2 < def.palette.count else { return "?" }
+            return "(\(def.palette[p]),\(def.palette[p+1]),\(def.palette[p+2]))"
+        }
         for (bi, block) in def.blocks.prefix(3).enumerated() {
             print("  block \(bi): frames=\(block.count)")
             if let f = block.first {
                 print("    frame0: \(f.width)x\(f.height) at (\(f.x),\(f.y)) full=\(f.fullWidth)x\(f.fullHeight) indices=\(f.indices.count)")
-                print("    frame0 first 32: \(Array(f.indices.prefix(32)))")
-                let row0 = Array(f.indices.prefix(f.width))
-                let row1 = f.indices.count > f.width ? Array(f.indices[f.width..<min(f.width * 2, f.indices.count)]) : []
-                print("    row0: \(row0)")
-                print("    row1: \(row1)")
             }
-            // 特殊索引统计：colorKey 模式只透明化 0，1..7 会按原调色板不透明渲染
-            // （占位符颜色常为品红/白），河流上出现的色块通常源于此。
+            // 关键诊断：每帧用到的全部非0索引直方图 + 这些索引的RGB，限前几帧和最高频
             for (fi, f) in block.enumerated() {
                 var hist: [UInt8: Int] = [:]
-                for i in f.indices where i >= 1 && i <= 7 { hist[i, default: 0] += 1 }
-                if !hist.isEmpty {
-                    let desc = hist.sorted { $0.value > $1.value }.map { "idx\($0.key)x\($0.value)" }.joined(separator: " ")
-                    print("    frame\(fi) \(f.width)x\(f.height)@(\(f.x),\(f.y)): SPECIAL \(desc) / total \(f.indices.count)")
+                for i in f.indices where i != 0 { hist[i, default: 0] += 1 }
+                if fi < 2 || hist.count > 0 {
+                    let top = hist.sorted { $0.value > $1.value }.prefix(12)
+                    let desc = top.map { "i\($0.key)x\($0.value)@\(idxRGB(Int($0.key)))" }.joined(separator: " ")
+                    print("    frame\(fi): topNonZeroIndices \(desc)")
+                    // 低索引 1..15 是否被用到（可能是白/品红占位）
+                    let low = hist.keys.filter { $0 >= 1 && $0 <= 15 }.sorted()
+                    if !low.isEmpty {
+                        print("      LOW-idx used: \(low.map { "i\($0)=\(idxRGB(Int($0)))" }.joined(separator: " "))")
+                    }
                 }
             }
         }
-        print("  palette[0..15]: \(Array(def.palette.prefix(48)))")
+        print("  palette[0..31]: \(Array(def.palette.prefix(96)))")
     }
 
     static func defaultDataDir(_ override: String) -> URL {

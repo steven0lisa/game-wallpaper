@@ -294,14 +294,22 @@ final class MapRenderer {
         }
 
         // ---- rivers ----
+        // VCMI 河流帧有 margin（数据只占 32×32 canvas 的一部分，如 CLRRVR 帧 23×24 在
+        // offset(3,0)），不能用固定 cropW=32 的 uvRect（会把 UV 越界读到 atlas 相邻帧，
+        // 表现为"白色方块"）。改用 canvasCrop 按 32×32 canvas 裁剪，offset 对齐且不越界。
         for cell in map.rivers {
             if Float(cell.x * 32) + 32 < px || Float(cell.x * 32) > px + pw { continue }
             if Float(cell.y * 32) + 32 < py || Float(cell.y * 32) > py + ph { continue }
             let step = cell.steps > 1 ? animStep % cell.steps : 0
-            guard let pf = packed(FrameKey(def: cell.def, block: 0, index: cell.index, step: step)) else { continue }
-            let (uv, flags) = Self.uvRect(pf, atlasPS: ps, cropX: 0, cropY: 0, cropW: 32, cropH: 32,
-                                          flipH: cell.flipH, flipV: cell.flipV)
-            push(SIMD4<Float>(Float(cell.x * 32), Float(cell.y * 32), 32, 32), uv, flags: flags, page: pf.page)
+            guard let pf = packed(FrameKey(def: cell.def, block: 0, index: cell.index, step: step)),
+                  let c = Self.canvasCrop(pf, atlasPS: ps, canvasX: 0, canvasY: 0, canvasW: 32, canvasH: 32,
+                                          flipH: cell.flipH, flipV: cell.flipV) else {
+                debugLog("RIVER-MISS def=\(cell.def) index=\(cell.index) step=\(step) at(\(cell.x),\(cell.y)) steps=\(cell.steps)")
+                continue
+            }
+            let (uv, flags) = (c.uv, c.flags)
+            push(SIMD4<Float>(Float(cell.x * 32) + c.offset.x, Float(cell.y * 32) + c.offset.y, c.size.x, c.size.y),
+                 uv, flags: flags, page: pf.page)
         }
 
         // ---- roads: VCMI renders every visible tile — a tile with no road still
