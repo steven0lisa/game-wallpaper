@@ -1,0 +1,13 @@
+{
+  "name": "heroes3-map-web",
+  "version": "1.0.0",
+  "description": "HoMM3 map renderer — Node backend + HTML Canvas frontend",
+  "main": "server/Server.js",
+  "scripts": {
+    "start": "node server/Server.js"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "license": "MIT"
+}

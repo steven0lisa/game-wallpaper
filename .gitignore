@@ -1,0 +1,29 @@
+# 构建产物
+.build/
+build/
+dist/
+
+# macOS / Xcode
+.DS_Store
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# Windows 构建产物
+windows/dist/
+windows/deploy/
+windows/*.exe
+windows/*.pdb
+windows/*.obj
+windows/*.ilk
+
+# Android 原始资源包（体积大，不入库；解包地图见 base.apk_assets_maps 或另行管理）
+base.apk
+
+# Node / Web
+web/node_modules/
+web/server/cache/
+
+# 运行时临时文件
+*.log
+/tmp/

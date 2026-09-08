@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Heroes 3 Map Viewer</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #101018; }
+  #map { display: block; width: 100vw; height: 100vh; cursor: grab; }
+  #map.dragging { cursor: grabbing; }
+  .panel {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    background: rgba(18, 18, 28, 0.88); color: #eee;
+    font: 13px/1.6 -apple-system, "PingFang SC", sans-serif;
+    padding: 10px 14px; border-radius: 10px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.5);
+    min-width: 260px; max-width: 340px;
+  }
+  .panel h1 { font-size: 14px; margin: 0 0 6px; color: #ffd76e; }
+  .panel select { width: 100%; margin: 4px 0 8px; background:#222; color:#eee; border:1px solid #444; border-radius:6px; padding:3px 6px; }
+  .panel .row { display: flex; gap: 6px; align-items: center; }
+  .panel button {
+    background: #2c2c40; color: #eee; border: 1px solid #4a4a66; border-radius: 6px;
+    padding: 3px 10px; cursor: pointer; font-size: 12px;
+  }
+  .panel button:hover { background: #3c3c58; }
+  .panel .hint { color: #888; font-size: 11px; margin-top: 6px; }
+  #loading {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #ffd76e; font: 16px -apple-system, sans-serif; background: rgba(10,10,16,.8); z-index: 20;
+  }
+  #loading.hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="loading">加载地图中…</div>
+<canvas id="map"></canvas>
+<div class="panel">
+  <h1>🏰 Heroes 3 Map Viewer</h1>
+  <select id="mapSelect"></select>
+  <select id="levelSelect">
+    <option value="0">Level 1: Surface</option>
+    <option value="1">Level 2: Underground</option>
+  </select>
+  <div class="row">
+    <button id="zoomOut">−</button>
+    <button id="zoomIn">＋</button>
+    <button id="fit">适配窗口</button>
+    <button id="pause">暂停</button>
+  </div>
+  <div class="hint">拖拽平移 · 滚轮缩放 · <span id="stat"></span></div>
+</div>
+<script src="viewer.js"></script>
+</body>
+</html>
