@@ -26,10 +26,31 @@ echo "==> Merging into universal binary..."
 file "$APP/Contents/MacOS/Heroes3Wallpaper"
 "$LIPO" -info "$APP/Contents/MacOS/Heroes3Wallpaper"
 
-# 内置地图：从 VCMI 地图目录（或 base.apk 解包目录）挑选 20 张体积最大的（相近名去重）
-python3 scripts/pick_maps.py "$APP/Contents/Resources" 20 \
-    "$HOME/Library/Application Support/vcmi/Maps" \
-    base.apk_assets_maps || cp base.apk_assets_maps/*.h3m "$APP/Contents/Resources/" 2>/dev/null || true
+# 内置渲染必需的 H3sprite.lod（地形/物件全部精灵，~65MB）——自包含分发的前提。
+# 运行时解析顺序见 AppDelegate.dataDir / main.defaultDataDir：
+#   用户设置 dataDir > bundle Resources/Data/H3sprite.lod > ~/Library/Application Support/vcmi
+LOD="${LOD:-$HOME/Library/Application Support/vcmi/Data/H3sprite.lod}"
+if [ -f "$LOD" ]; then
+    mkdir -p "$APP/Contents/Resources/Data"
+    cp "$LOD" "$APP/Contents/Resources/Data/H3sprite.lod"
+else
+    echo "ERROR: no H3sprite.lod at $LOD —— 渲染必需资源缺失，拒绝打包" >&2
+    exit 1
+fi
+
+# 内置地图：从 VCMI 地图目录（或 base.apk 解包目录）拷贝全部 .h3m（相近名去重，
+# 总量截到 ~80MB 保证 dmg 合理）；地图目录缺失即失败，不允许静默出空包。
+MAP_SRC="${MAP_SRC:-$HOME/Library/Application Support/vcmi/Maps}"
+if [ ! -d "$MAP_SRC" ]; then
+    echo "ERROR: no Maps dir at $MAP_SRC —— 地图资源缺失，拒绝打包" >&2
+    exit 1
+fi
+python3 scripts/pick_maps.py "$APP/Contents/Resources" 83886080 "$MAP_SRC" \
+    base.apk_assets_maps || true
+if [ -z "$(ls "$APP/Contents/Resources"/*.h3m 2>/dev/null)" ]; then
+    echo "ERROR: no .h3m collected —— 地图资源缺失，拒绝打包" >&2
+    exit 1
+fi
 
 # Web 地图查看器资源
 mkdir -p "$APP/Contents/Resources/webviewer"

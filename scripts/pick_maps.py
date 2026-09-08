@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """挑选用于打包内置的地图：优先大地图（XL > L > M > S），相近名去重。
 
-用法: pick_maps.py <out_dir> [count=20] <maps_dir> [more_maps_dir...]
+用法: pick_maps.py <out_dir> [count=20 | size如80MB] <maps_dir> [more_maps_dir...]
 
 规则：
   * 解析 h3m 头读取地图尺寸（XL=144 / L=108 / M=72 / S=36）；
@@ -34,7 +34,7 @@ def h3m_size_and_path(p):
 
 def main() -> int:
     out_dir = sys.argv[1]
-    count = int(sys.argv[2]) if len(sys.argv) > 2 else 20
+    arg2 = sys.argv[2] if len(sys.argv) > 2 else "20"
     maps_dirs = sys.argv[3:]
 
     items = []  # (h3m_size, file_bytes, path, name, group)
@@ -64,19 +64,32 @@ def main() -> int:
     # 用户要求：内置地图只保留 XL(144) 和 L(108)，踢出 M(72)/S(36)/XS
     items = [it for it in items if it[0] >= 108]
 
+    # 限额：纯数字 = 张数；带单位（如 80MB）= 累计文件字节上限
+    limit_bytes = None
+    m = re.fullmatch(r"(\d+)([KMG]?)B?", arg2.upper())
+    if m and m.group(2):
+        mult = {"K": 1024, "M": 1024**2, "G": 1024**3}[m.group(2)]
+        limit_bytes = int(m.group(1)) * mult
+        count = 10**9
+    else:
+        count = int(arg2)
+
     seen_norm = set()
     selected = []
+    total = 0
     for sz, fs, p, f, group in items:
         norm = re.sub(r"[^a-z0-9]", "", f.lower())
         if any(SequenceMatcher(None, norm, s).ratio() >= 0.72 for s in seen_norm):
             continue
         if len(selected) >= count:
             break
+        if limit_bytes is not None and total + fs > limit_bytes:
+            continue
         selected.append((p, f, sz, fs, group))
         seen_norm.add(norm)
+        total += fs
 
     os.makedirs(out_dir, exist_ok=True)
-    total = 0
     by_group = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0}
     group_names = {0: "XL", 1: "L ", 2: "M ", 3: "S ", 4: "XS"}
     for p, f, sz, fs, g in selected:

@@ -13,8 +13,12 @@
 | 同目录 `H3ab_bmp.lod` / `H3ab_spr.lod` | 其余 PCX/MSK，本项目不用 |
 
 这些是 VCMI 安装时复制的原版游戏文件（版权属 Ubisoft/NWC，本仓库不含）。
-换机器时把任意一份 HoMM3 Complete 的 `H3sprite.lod` 放到上述位置，或通过菜单栏
-指定其他目录（读取 `<dataDir>/Data/H3sprite.lod`）。
+
+**运行时 LOD 解析顺序**（`AppDelegate.dataDir` / `main.defaultDataDir`）：
+1. 用户设置过的 `dataDir`（UserDefaults）；
+2. **app 内置资源** `Heroes3Wallpaper.app/Contents/Resources/Data/H3sprite.lod`
+   （`build_app.sh` 自动从 vcmi 目录拷入，自包含分发的前提）；
+3. `~/Library/Application Support/vcmi`（开发机兜底）。
 
 ## 地图（默认 `~/Library/Application Support/vcmi/Maps/`）
 
@@ -22,6 +26,9 @@
 - `base.apk`（h3lwp 3.0.7）内还带两张小图：`discovery-by-prometheus.h3m`、
   `invasion.h3m`，已解出存于 `base.apk_assets_maps/` 并打进 app Resources 作兜底
   （地图目录为空时使用）。
+- **打包策略**：`build_app.sh` 调 `pick_maps.py` 拷贝全部 XL/L 地图（相近名去重，
+  总量截到 80MB），本机 vcmi 目录 38 张共 3MB；地图目录缺失时打包**报错拒绝**，
+  不允许静默出空包。
 
 ## 参考代码库
 
@@ -40,7 +47,8 @@
 ## 命令速查
 
 ```bash
-./scripts/build_app.sh            # 构建 release 并打包 .app（含 About 资源导出 + i18n + dmg）
+./scripts/build_app.sh            # 构建 release 并打包 .app（内置 H3sprite.lod + 全量地图
+                                  # + About 资源导出 + i18n + dmg；产物约 66MB）
 open build/Heroes3Wallpaper.app   # 启动壁纸（菜单栏 🏰）
 
 # About 窗口无头验证：启动后 0.9s 自动弹出 About（配合 Quartz 枚举窗口 + screencapture -l<id> 截图）

@@ -336,3 +336,19 @@ common ancestor`。
 **教训**：还原 VCMI 布局先读 `CWindowObject::showAll` 而不是只看 `CMessage::drawBorder`
 ——**调用方传入的矩形才是真相**；边框贴图步进 64px 决定了窗口尺寸应该向 64px
 网格对齐，任意尺寸只会逼出补缝逻辑。
+
+## 26. dmg 只有 2MB——LOD 从未内置，渲染依赖开发机的 vcmi 目录
+
+**现象**：dmg 仅 2MB。用户指出"要内置 lod 和地图"。
+**根因**：`build_app.sh` 只打了 20 张小地图（1MB）+ About PNG；`AppDelegate.dataDir`
+与 `main.defaultDataDir` 写死 `~/Library/Application Support/vcmi/Data/H3sprite.lod`
+——本机能跑只因开发机装了 VCMI，换机器直接 `library FAILED` 黑屏。
+**修复**：
+- `build_app.sh` 把 `H3sprite.lod`（62MB，地形/物件全部精灵）拷进
+  `Resources/Data/`；缺失时报错拒绝打包（地图目录同理）。
+- `dataDir`/`defaultDataDir` 加内置优先回退链：UserDefaults dataDir >
+  **bundle Resources/Data/H3sprite.lod** > `~/Library/.../vcmi`。
+- `pick_maps.py` 限额参数支持字节（`80MB`）与张数两种写法；地图全量 XL/L
+  去重拷贝（38 张 3MB）。
+**教训**：打包产物体积异常小就是资源没进包的强信号；自包含分发必须验证
+"清空 UserDefaults 后仍能渲染"（模拟无 vcmi 的目标机），仅本机跑通不算数。

@@ -177,6 +177,11 @@ enum SnapshotCLI {
 
     static func defaultDataDir(_ override: String) -> URL {
         if !override.isEmpty { return URL(fileURLWithPath: override) }
+        // app 内置资源（自包含分发）：Resources/Data/H3sprite.lod
+        if let res = Bundle.main.resourceURL,
+           FileManager.default.fileExists(atPath: res.appendingPathComponent("Data/H3sprite.lod").path) {
+            return res
+        }
         let home = FileManager.default.homeDirectoryForCurrentUser
         return home.appendingPathComponent("Library/Application Support/vcmi")
     }

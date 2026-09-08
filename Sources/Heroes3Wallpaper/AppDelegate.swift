@@ -24,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let saved, FileManager.default.fileExists(atPath: saved) {
             return URL(fileURLWithPath: saved)
         }
+        // app 内置资源（自包含分发）：Resources/Data/H3sprite.lod
+        if let res = Bundle.main.resourceURL,
+           FileManager.default.fileExists(atPath: res.appendingPathComponent("Data/H3sprite.lod").path) {
+            return res
+        }
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/vcmi")
     }
