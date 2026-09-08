@@ -23,6 +23,14 @@ final class MapWebServer {
     /// 按需构建的场景缓存（只保留最近 1 个）
     private var cachedScene: ViewerScene?
 
+    /// 换图时作废场景缓存：cachedScene 持有整份图集页像素拷贝（每页 16MB），
+    /// 不作废则旧地图的副本会驻留到下次 viewer 请求或闲置退出。
+    func invalidateSceneCache() {
+        lock.lock()
+        cachedScene = nil
+        lock.unlock()
+    }
+
     struct SceneBuildError: Error {}
 
     init(presenter: MapPresenter) {

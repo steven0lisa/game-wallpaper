@@ -88,6 +88,8 @@ final class MapPresenter: NSObject, MTKViewDelegate {
     private(set) var mapURLs: [URL] = []
     private var currentIndex = 0
     private(set) var loading = false
+    /// 换图时回调（作废 WebViewer 场景缓存等）；由 AppDelegate 装配。
+    var onMapChanged: (() -> Void)?
 
     init(renderer: MapRenderer) {
         self.renderer = renderer
@@ -146,10 +148,13 @@ final class MapPresenter: NSObject, MTKViewDelegate {
                     self.current = CurrentMap(url: url, map: map, atlas: atlas)
                     self.renderer.uploadAtlas(atlas)
                     self.camera = Camera()
+                    // 旧地图的 viewer 场景副本（图集页像素拷贝）一并作废
+                    self.onMapChanged?()
                     // mapSize/viewW/viewH 在第一次 draw 时会调用 reset()，无需传
                     self.cycleElapsed = 0
                     self.loading = false
                     NSLog("Heroes3Wallpaper: map ready, frames=%d", atlas.packedCount)
+                    Self.logFootprint("map ready")
                 }
             } catch {
                 NSLog("Heroes3Wallpaper: failed to load %@: %@", url.lastPathComponent, String(describing: error))
@@ -159,6 +164,16 @@ final class MapPresenter: NSObject, MTKViewDelegate {
                 }
             }
         }
+    }
+
+    /// 进程物理内存占用（footprint），用于观察换图周期内的内存回落。
+    static func logFootprint(_ tag: String) {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        guard task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO),
+                        withUnsafeMutableBytes(of: &info) { $0.bindMemory(to: integer_t.self).baseAddress! },
+                        &count) == KERN_SUCCESS else { return }
+        NSLog("Heroes3Wallpaper: footprint %@ = %.0f MB", tag, Double(info.phys_footprint) / 1048576.0)
     }
 
     var library: AssetLibrary?

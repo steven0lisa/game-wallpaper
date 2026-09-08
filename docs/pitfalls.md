@@ -352,3 +352,26 @@ common ancestor`。
   去重拷贝（38 张 3MB）。
 **教训**：打包产物体积异常小就是资源没进包的强信号；自包含分发必须验证
 "清空 UserDefaults 后仍能渲染"（模拟无 vcmi 的目标机），仅本机跑通不算数。
+
+## 27. 壁纸内存持续上涨（245→412MB）——DefFile 缓存与 viewer 场景缓存只进不出
+
+**现象**：运行 4 小时 footprint 从 245MB 涨到 412MB，`sample` 显示全部线程空闲
+（不是 CPU 热点），即"换图时增量、不回落"的累积而非运行时泄漏。
+**根因**（换图周期 15 分钟，+10MB/张 与 4 小时增量吻合）：
+1. **`AssetLibrary.cache` 只进不出**（主因）：`AtlasBuilder.build` 把每张图用到的
+   全部 DEF（解压后的帧数据）塞进缓存，换图后不淘汰。def 数据只在构建 atlas
+   （烘焙进 2048×2048 像素图集）期间需要，烘焙完即死重。
+2. **`MapWebServer.cachedScene` 换图不失效**：持有整份图集页 RGBA 拷贝
+   （每页 16MB），旧地图的副本驻留到下次 viewer 请求或闲置 30 分钟退出。
+**修复**：
+- `AtlasBuilder.build` 末尾 `library.purgeDefCache()`——atlas 烘焙完即清；
+  并发重建时 `def()` 会自动重读 lod，只是重复解压，无正确性问题。
+- `MapPresenter.onMapChanged` 回调（AppDelegate 装配到
+  `webServer.invalidateSceneCache()`），换图即作废旧场景副本。
+- `MapPresenter.logFootprint(_:)` 在每次 map ready 打印 phys_footprint，
+  长跑观测有数据可查（"没日志就死命猜"）。
+**验证**：30s 换图间隔连续轮换 78 张不同地图（约 40 分钟），footprint
+min=286 / median=400 / max=612 MB，无单调增长；残余波动为不同地图 atlas
+大小差异与 malloc 未归还页，正常。
+**教训**：`sample` 先排除 CPU 热点，再按"哪些集合只进不出"排查——
+长生命周期 App 里，一切无淘汰策略的缓存都会成为内存曲线的斜率。

@@ -28,6 +28,13 @@ final class AssetLibrary {
         cache[key] = def
         return def
     }
+
+    /// 清空 DefFile 缓存。def 数据只在构建 atlas（烘焙进像素图集）期间需要，
+    /// 烘焙完即可释放；否则每换一张图就把该图全部 def 解压数据永久驻留，
+    /// 内存随换图次数线性上涨（实测 ~10MB/张）。
+    func purgeDefCache() {
+        cache.removeAll(keepingCapacity: false)
+    }
 }
 
 /// Identifies one renderable frame: def name + block + frame index + palette rotation step.
@@ -204,6 +211,9 @@ enum AtlasBuilder {
             }
             atlas.add(key: key, def: def, block: key.block, index: key.index, mode: mode)
         }
+        // atlas 已烘焙完成，def 解压数据不再需要；清缓存防止随换图累积（见 purgeDefCache）。
+        // 并发场景下另一处 build 可能正在用缓存，def() 会自动重读 lod，只是重复解压，无正确性问题。
+        library.purgeDefCache()
         return atlas
     }
 }

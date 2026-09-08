@@ -57,6 +57,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Web 地图查看器：点击菜单项时才启动服务（省内存/CPU）
         self.webServer = MapWebServer(presenter: presenter)
+        // 换图后作废 viewer 的场景缓存（持有整份图集页像素拷贝，不释放则驻留旧图内存）
+        presenter.onMapChanged = { [weak self] in
+            self?.webServer?.invalidateSceneCache()
+        }
 
         loadMaps()
         buildMenu()
