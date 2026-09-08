@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowController: WallpaperWindowController?
     private var presenter: MapPresenter?
     private var renderer: MapRenderer?
+    private var aboutController: AboutWindowController?
 
     private var webServer: MapWebServer?
 
@@ -54,6 +55,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         loadMaps()
         buildMenu()
+
+        // 启动参数 --about：打开 app 后直接弹出 About 窗口（也用于无头验证）
+        if CommandLine.arguments.contains("--about") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
+                self?.showAbout()
+            }
+        }
     }
 
     private func loadMaps() {
@@ -73,7 +81,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private lazy var mapTitleItem = NSMenuItem(title: "Heroes 3 Wallpaper", action: nil, keyEquivalent: "")
     private var zoomItems: [NSMenuItem] = []
-    private let pauseItem = NSMenuItem(title: "Pause", action: #selector(togglePause), keyEquivalent: "p")
+    private let pauseItem = NSMenuItem(title: NSLocalizedString("Menu.Pause", value: "Pause", comment: ""), action: #selector(togglePause), keyEquivalent: "p")
+
+    private let aboutItem = NSMenuItem(title: NSLocalizedString("Menu.About", value: "About Heroes 3 Wallpaper…", comment: ""), action: #selector(showAbout), keyEquivalent: "")
 
     private func buildMenu() {
         let menu = NSMenu()
@@ -82,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(mapTitleItem)
         menu.addItem(.separator())
 
-        let next = NSMenuItem(title: "Next Map Now", action: #selector(nextMap), keyEquivalent: "n")
+        let next = NSMenuItem(title: NSLocalizedString("Menu.NextMap", value: "Next Map Now", comment: ""), action: #selector(nextMap), keyEquivalent: "n")
         next.target = self
         menu.addItem(next)
 
@@ -92,43 +102,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let zoomMenu = NSMenu()
         for (i, label) in ["1×", "2×", "3×", "4×"].enumerated() {
-            let item = NSMenuItem(title: "Zoom \(label)", action: #selector(setZoom(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: NSLocalizedString("Menu.Zoom", value: "Zoom", comment: "") + " \(label)", action: #selector(setZoom(_:)), keyEquivalent: "")
             item.tag = i
             item.target = self
             item.state = i == Int(presenter?.zoom ?? 2).clampedZoomIndex ? .on : .off
             zoomMenu.addItem(item)
             zoomItems.append(item)
         }
-        let zoomRoot = NSMenuItem(title: "Zoom", action: nil, keyEquivalent: "")
+        let zoomRoot = NSMenuItem(title: NSLocalizedString("Menu.Zoom", value: "Zoom", comment: ""), action: nil, keyEquivalent: "")
         zoomRoot.submenu = zoomMenu
         menu.addItem(zoomRoot)
 
         let brightMenu = NSMenu()
         for (i, pct) in [0, 10, 20, 30, 40, 50, 60].enumerated() {
-            let item = NSMenuItem(title: "\(pct)% darker", action: #selector(setBrightness(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: NSLocalizedString("Menu.Darker", value: "Darker", comment: "") + " \(pct)%", action: #selector(setBrightness(_:)), keyEquivalent: "")
             item.tag = i
             item.target = self
             brightMenu.addItem(item)
         }
-        let brightRoot = NSMenuItem(title: "Brightness", action: nil, keyEquivalent: "")
+        let brightRoot = NSMenuItem(title: NSLocalizedString("Menu.Brightness", value: "Brightness", comment: ""), action: nil, keyEquivalent: "")
         brightRoot.submenu = brightMenu
         menu.addItem(brightRoot)
         menu.addItem(.separator())
 
-        let openFolder = NSMenuItem(title: "Choose Maps Folder…", action: #selector(chooseMapsFolder), keyEquivalent: "")
+        let openFolder = NSMenuItem(title: NSLocalizedString("Menu.ChooseMapsFolder", value: "Choose Maps Folder…", comment: ""), action: #selector(chooseMapsFolder), keyEquivalent: "")
         openFolder.target = self
         menu.addItem(openFolder)
 
-        let openMap = NSMenuItem(title: "Open Map…", action: #selector(chooseSingleMap), keyEquivalent: "o")
+        let openMap = NSMenuItem(title: NSLocalizedString("Menu.OpenMap", value: "Open Map…", comment: ""), action: #selector(chooseSingleMap), keyEquivalent: "o")
         openMap.target = self
         menu.addItem(openMap)
 
-        let viewer = NSMenuItem(title: "Map Viewer（浏览器查看地图）", action: #selector(openMapViewer), keyEquivalent: "m")
+        let viewer = NSMenuItem(title: NSLocalizedString("Menu.MapViewer", value: "Map Viewer", comment: ""), action: #selector(openMapViewer), keyEquivalent: "m")
         viewer.target = self
         menu.addItem(viewer)
         menu.addItem(.separator())
 
-        let quit = NSMenuItem(title: "Quit Heroes 3 Wallpaper", action: #selector(quit), keyEquivalent: "q")
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+        menu.addItem(.separator())
+
+        let quit = NSMenuItem(title: NSLocalizedString("Menu.Quit", value: "Quit Heroes 3 Wallpaper", comment: ""), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 
@@ -140,7 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateMenuTitle() {
         let name = presenter?.current?.url.lastPathComponent
-            ?? (presenter?.loading == true ? "Loading…" : "No map loaded")
+            ?? (presenter?.loading == true ? NSLocalizedString("Menu.Loading", value: "Loading…", comment: "") : NSLocalizedString("Menu.NoMap", value: "No map loaded", comment: ""))
         mapTitleItem.title = "Heroes 3 Wallpaper — \(name)"
     }
 
@@ -152,7 +166,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func togglePause() {
         guard let presenter else { return }
         presenter.paused.toggle()
-        pauseItem.title = presenter.paused ? "Resume" : "Pause"
+        pauseItem.title = presenter.paused ? NSLocalizedString("Menu.Resume", value: "Resume", comment: "") : NSLocalizedString("Menu.Pause", value: "Pause", comment: "")
+    }
+
+    @objc private func showAbout() {
+        if aboutController == nil {
+            aboutController = AboutWindowController()
+        }
+        aboutController?.show()
     }
 
     @objc private func setZoom(_ sender: NSMenuItem) {

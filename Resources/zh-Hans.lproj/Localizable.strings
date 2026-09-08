@@ -1,0 +1,16 @@
+/* Heroes 3 Wallpaper — 简体中文本地化 */
+"Menu.Pause" = "暂停";
+"Menu.Resume" = "继续";
+"Menu.About" = "关于 Heroes 3 Wallpaper…";
+"Menu.NextMap" = "下一张地图";
+"Menu.Zoom" = "缩放";
+"Menu.Darker" = "调暗";
+"Menu.Brightness" = "亮度";
+"Menu.ChooseMapsFolder" = "选择地图文件夹…";
+"Menu.OpenMap" = "打开地图…";
+"Menu.MapViewer" = "地图查看器";
+"Menu.Loading" = "加载中…";
+"Menu.NoMap" = "未加载地图";
+"Menu.Quit" = "退出 Heroes 3 Wallpaper";
+"About.Author" = "作者：steven0lisa";
+"About.OK" = "确定";
