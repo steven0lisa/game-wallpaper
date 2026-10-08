@@ -353,3 +353,28 @@ the map-change timer and jumps kept running — not "saving all the way".
 **Lesson**: Whenever a "state-driven load reduction" relies on the reduced path's own callback for its recovery check, the check must move
 to an independent timer/event source; isPaused is the correct switch for stopping the display-link (preferredFramesPerSecond=0
 doesn't work, and early-returning from draw doesn't save the timer wakeups either).
+
+## 29. Bezel-less NSButton dims its attributed title (About feedback link)
+
+**Symptom**: The About window's gold "Feedback" link (an `NSButton` with
+`isBordered = false` + `momentaryChange` + an attributed title carrying a gold
+`foregroundColor`) rendered dark brown — the color was heavily dimmed, while the
+plain `NSTextField` labels right above it (same gold, via `colorLiteral`)
+rendered correctly. Switching the color from `calibratedRed` to `srgbRed`
+changed nothing.
+
+**Root cause**: AppKit's bezel-less button applies its own title rendering
+(state-dependent dimming/appearance treatment) on top of the attributed title;
+`NSColor(calibratedRed:)` is also a colorspace-calibrated path that did not map
+to the expected sRGB values in this bitmap context. Neither the color space nor
+the attributes were the real culprit — the control was.
+
+**Fix**: Render the link as an `NSTextField` (`isEditable = false`,
+`drawsBackground = false`) — the exact same rendering path as the window's other
+gold labels — with `mouseDown` opening the URL, a `TrackingArea` for hover
+highlight and `resetCursorRects` for the pointing-hand cursor. Gold now renders
+identically to the neighboring text. Verified by screenshotting the live window.
+
+**Lesson**: when a "styled button" must match custom-drawn text, prefer a label
+control + gesture over NSButton styling; NSButton's own appearance machinery
+wins over attributed colors.

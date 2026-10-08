@@ -364,3 +364,23 @@ min=286 / median=400 / max=612 MB，无单调增长；残余波动为不同地�
 **教训**：凡"状态驱动的降载"若依赖被降载路径本身的回调做恢复检查，必须把检查
 移到独立定时器/事件源；isPaused 才是停 display-link 的正确开关（preferredFramesPerSecond=0
 无效，draw 早退也不省 timer 唤醒）。
+
+## 29. 无边框 NSButton 会把 attributed 标题压暗（About 反馈链接）
+
+**现象**：About 窗口的金色 "Feedback" 链接（`NSButton` + `isBordered = false` +
+`momentaryChange` + 带 `foregroundColor` 金色的 attributed 标题）渲染成暗棕色，
+颜色被严重压暗；而它上方普通的 `NSTextField` 标签（同样的金色，`colorLiteral`）
+显示正常。把颜色从 `calibratedRed` 换成 `srgbRed` 也没有改善。
+
+**根因**：AppKit 的无边框 button 会在 attributed 标题之上叠加自己的标题渲染
+（随状态变化的变暗/外观处理）；`NSColor(calibratedRed:)` 还会经过色彩空间校准，
+在这个位图上下文里映射不到预期的 sRGB 值。真正的元凶是控件本身，不是颜色空间
+也不是属性设置。
+
+**修复**：改用 `NSTextField` 渲染链接（`isEditable = false`、
+`drawsBackground = false`）——与窗口内其他金色标签完全相同的渲染路径——
+`mouseDown` 打开 URL，`TrackingArea` 做 hover 提亮，`resetCursorRects` 提供
+手型光标。金色终于与相邻文字一致。已用真实窗口截图验证。
+
+**教训**：当"按钮"必须与自绘文字风格完全一致时，优先用 label 控件 + 手势，
+而不是折腾 NSButton 的样式；NSButton 自己的外观机制会压过 attributed 颜色。

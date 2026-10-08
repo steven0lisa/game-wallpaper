@@ -14,3 +14,5 @@
 "Menu.NoMap" = "No map loaded";
 "Menu.Quit" = "Quit Game Wallpaper";
 "About.OK" = "OK";
+"About.Feedback" = "Feedback";
+"About.FeedbackTooltip" = "Report an issue on GitHub";

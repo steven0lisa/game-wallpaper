@@ -176,6 +176,7 @@ final class AboutView: NSView {
     private let versionLabel = NSTextField(labelWithString: "")
     private let copyrightLabel = NSTextField(labelWithString: "")
     private let okButton = NSButton()
+    private let feedbackButton = FeedbackLinkLabel()
     private var timer: Timer?
     private var frameIndex = 0
 
@@ -230,6 +231,10 @@ final class AboutView: NSView {
         okButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(okButton)
 
+        // Feedback 链接：H3 金字风格，指向 GitHub Issues（文案由 FeedbackLinkLabel 自绘）
+        feedbackButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(feedbackButton)
+
         NSLayoutConstraint.activate([
             borderView.topAnchor.constraint(equalTo: topAnchor),
             borderView.bottomAnchor.constraint(equalTo: bottomAnchor),
@@ -253,6 +258,10 @@ final class AboutView: NSView {
 
             copyrightLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             copyrightLabel.topAnchor.constraint(equalTo: versionLabel.bottomAnchor, constant: 12),
+
+            feedbackButton.centerXAnchor.constraint(equalTo: centerXAnchor),
+            feedbackButton.topAnchor.constraint(equalTo: copyrightLabel.bottomAnchor, constant: 12),
+            feedbackButton.heightAnchor.constraint(equalToConstant: 18),
 
             okButton.centerXAnchor.constraint(equalTo: centerXAnchor),
             okButton.bottomAnchor.constraint(equalTo: bottomAnchor,
@@ -289,5 +298,72 @@ final class AboutView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         // 窗口显示时启动、关闭时停止，避免后台timer空转
+    }
+}
+
+/// About 窗口的 Feedback 链接：H3 金色浮雕文字（暖金 + 深棕投影 + 半透明下划线），
+/// hover 提亮、手型光标，点击打开 GitHub Issues。
+/// 用 NSTextField 而非 NSButton——bezelless button 会把 attributed 标题压暗，
+/// 而窗口内金色文案（nameLabel）走的正是 label 渲染路径，观感一致。
+final class FeedbackLinkLabel: NSTextField {
+    static let issuesURL = URL(string: "https://github.com/steven0lisa/game-wallpaper/issues")!
+
+    private var trackingArea: NSTrackingArea?
+    private let normalTitle = FeedbackLinkLabel.attributed(
+        color: NSColor(srgbRed: 0.95, green: 0.80, blue: 0.42, alpha: 1))
+    private let hoverTitle = FeedbackLinkLabel.attributed(
+        color: NSColor(srgbRed: 1.0, green: 0.90, blue: 0.58, alpha: 1))
+
+    init() {
+        super.init(frame: .zero)
+        isEditable = false
+        isBordered = false
+        drawsBackground = false
+        attributedStringValue = normalTitle
+        alignment = .center
+        toolTip = NSLocalizedString("About.FeedbackTooltip", value: "Report an issue on GitHub", comment: "")
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    private static func attributed(color: NSColor) -> NSAttributedString {
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor(srgbRed: 0.16, green: 0.11, blue: 0.05, alpha: 0.9)
+        shadow.shadowOffset = NSSize(width: 0, height: -1)
+        shadow.shadowBlurRadius = 1.5
+        return NSAttributedString(string: NSLocalizedString("About.Feedback", value: "Feedback", comment: ""),
+                                  attributes: [
+            .font: NSFont.boldSystemFont(ofSize: 13),
+            .foregroundColor: color,
+            .shadow: shadow,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+            .underlineColor: color.withAlphaComponent(0.55),
+        ])
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(rect: bounds,
+                                  options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                                  owner: self)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        attributedStringValue = hoverTitle
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        attributedStringValue = normalTitle
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        NSWorkspace.shared.open(Self.issuesURL)
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
     }
 }

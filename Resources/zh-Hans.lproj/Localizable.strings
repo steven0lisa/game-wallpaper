@@ -14,3 +14,5 @@
 "Menu.NoMap" = "未加载地图";
 "Menu.Quit" = "退出 Game Wallpaper";
 "About.OK" = "确定";
+"About.Feedback" = "问题反馈";
+"About.FeedbackTooltip" = "在 GitHub Issues 反馈问题";
