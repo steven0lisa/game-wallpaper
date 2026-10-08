@@ -1,100 +1,100 @@
-# GameWallpaper — 多游戏引擎动态壁纸（macOS + Web）
+<h1 align="center">🎮 GameWallpaper</h1>
 
-[English](README.md) | 中文
+<p align="center">
+  <strong>让你的桌面变成活的游戏世界。</strong><br>
+  经典游戏地图实时渲染成 macOS 动态壁纸。<br>
+  <a href="README.md">English</a> | 中文
+</p>
 
-把经典游戏的地图/关卡实时渲染成桌面动态壁纸。运行时（壁纸壳）与游戏引擎解耦，
-当前内置 **Heroes of Might & Magic III** 引擎，后续将接入更多游戏
-（仙剑、星际争霸等，见 [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md)）。
+<p align="center">
+  <img src="docs/wallpaper_final.png" alt="GameWallpaper 真机桌面效果" width="720">
+</p>
 
-Heroes3 引擎：原版游戏素材（`H3sprite.lod`）驱动，`.h3m` 地图实时渲染——水面/岩浆
-调色板动画、物件待机动画、相机自动漫游，与 VCMI 引擎的实际游戏画面一致。
+GameWallpaper 目前内置 **英雄无敌 III** 引擎：任选一张 `.h3m` 地图，它就在你的
+桌面图标后面活起来——水面岩浆闪烁、物件待机动画、镜头缓缓巡视战场，与游戏内的
+冒险地图画面完全一致。更多游戏引擎在路线图上（见[路线图](#-路线图)）。
 
-| 平台 | 技术 | 入口 |
-|---|---|---|
-| macOS | Swift + Metal（桌面层窗口），SwiftPM 三 target | `scripts/build_app.sh` → `build/GameWallpaper.app` |
-| Web | Node 零依赖服务 + HTML Canvas（地图查看器） | `cd web && npm start` → http://localhost:8765 |
+## ✨ 特性
 
-> 原版游戏资源（.lod/.h3m）版权属 Ubisoft / New World Computing；**本仓库不含任何
-> 游戏资源文件**，需自备（推荐装 [VCMI](https://github.com/vcmi/vcmi)）。
+- **桌面活起来了，但绝不碍事** —— 壁纸位于桌面图标**之下**、不拦截任何鼠标点击，
+  桌面照常使用；所有 Space、所有显示器都可见。
+- **设置一次，不用再管** —— 每 15 分钟自动换一张地图，镜头每隔几分钟自动跳点；
+  也可以在菜单栏随时暂停 / 切换 / 指定地图。
+- **内置 3 张 XL 大地图** —— 装好就能看；随时加入自己的地图（选个文件夹即可）。
+- **对电池友好** —— 显示器休眠即暂停渲染；电池供电时完全停止（0 fps）；
+  相机静止时只有 5 fps，移动时才恢复。
+- **随心定制** —— 缩放 1×–4×、夜间把画面压暗 0–60%、一键暂停；
+  界面中英双语，跟随系统语言。
+- **内置地图查看器** —— 一键在浏览器里查看完整地图（平移/缩放/切图/看动画）。
 
-![screenshot](docs/wallpaper_final.png)
+## 🚀 快速开始
 
-## 架构
+**1. 下载**：从 [Releases 页面](https://github.com/steven0lisa/game-wallpaper/releases/latest)
+下载最新的 `GameWallpaper.dmg`，打开后把 **GameWallpaper** 拖入**应用程序**。
 
-```
-Sources/
-├── WallpaperCore/       壁纸壳（与游戏无关）：引擎协议、桌面层窗口、渲染循环、
-│                        电池/休眠策略、跳点相机、About 窗口
-├── Heroes3Engine/       Heroes3 引擎：lod/def/h3m 解析、图集、Metal 渲染、
-│                        内置 Web 查看器、无头 CLI
-└── GameWallpaper/       装配层（executable）：注册引擎 + 菜单栏 UI
-```
+**2. 指定游戏资源**（仅需一次）。启动后菜单栏出现 🎮 图标；首次运行点
+**Choose Data Folder…**，选择包含 `Data/H3sprite.lod` 的文件夹。如果你装了
+[VCMI](https://vcmi.eu)，直接选 `~/Library/Application Support/vcmi` 即可。
 
-引擎接入协议与扩展指南：**[docs/zh-CN/architecture.md](docs/zh-CN/architecture.md)**。
-渲染语义细节（与 VCMI 对齐的常量/公式）：[docs/zh-CN/rendering.md](docs/zh-CN/rendering.md)、
-踩坑记录：[docs/zh-CN/pitfalls.md](docs/zh-CN/pitfalls.md)。
+> 渲染需要原版英雄无敌3 的精灵文件（`H3sprite.lod`，约 65 MB），版权归
+> Ubisoft / New World Computing 所有，因此**安装包里不含**——需要你已有的游戏
+> 拷贝。安装免费的 [VCMI](https://vcmi.eu) 是把文件备齐的最简单方式。
+> **地图是可选的**：不指定地图目录时，内置的 3 张 XL 大地图会自动开始播放。
 
-## 使用（macOS）
+**3. 尽情欣赏。** 桌面已变成活的战场地图。通过 🎮 菜单切换地图、调节缩放/亮度、
+暂停，或打开地图查看器。
 
-```bash
-# 构建（需要 Xcode，macOS 13+；本机需有 H3sprite.lod，见 docs/zh-CN/environment.md）
-./scripts/build_app.sh
-open build/GameWallpaper.app   # 菜单栏出现 🎮 图标
-```
+<details>
+<summary><strong>系统要求与常见问题</strong></summary>
 
-- **地图来源**：默认加载 `~/Library/Application Support/vcmi/Maps/` 下全部 `.h3m`，
-  每 15 分钟自动换一张；菜单栏可「Next Map Now」「Open Map…」「Choose Maps Folder…」。
-- **游戏素材**：默认读取 `~/Library/Application Support/vcmi/Data/H3sprite.lod`。
-- **菜单栏设置**：缩放 1×–4×、亮度压暗 0–60%、暂停/恢复、立即切换地图。
-- **渲染层级**：窗口钉在桌面层（kCGDesktopWindowLevel，Plash 同款方案）——位于壁纸
-  之上、桌面图标之下，所有 Space 可见，不抢占鼠标点击。
-- **省电**：显示器休眠即暂停渲染；电池供电时完全停止渲染（0fps），接电自动恢复。
-- **退出**：菜单栏 → Quit。
+- macOS 13 及以上，Apple Silicon / Intel 均可。
+- **“无法打开 GameWallpaper”（Gatekeeper 拦截）**：构建未签名。右键 App →
+  **打开**，或执行 `xattr -d com.apple.quarantine /Applications/GameWallpaper.app`。
+- **菜单栏图标在但画面不动**：没找到游戏资源——用 **Choose Data Folder…**
+  选择包含 `Data/H3sprite.lod` 的目录。
+- **晚上太晃眼**：菜单 → Brightness → 最多压暗 60%。
+- **换地图**：**Choose Maps Folder…** 选一个 `.h3m` 文件夹，或 **Open Map…**（⌘O）
+  打开单个地图。
+- 退出：🎮 菜单 → Quit（⌘Q）。
 
-### 验证用 CLI（无头单帧渲染）
+</details>
 
-```bash
-.build/release/GameWallpaper --snapshot <map.h3m> --out snap.png \
-    [--data-dir <vcmi 目录>] [--width 1920 --height 1080] [--time-ms 3000] \
-    [--zoom 1] [--center-x 0.5 --center-y 0.5] [--level 0]
-```
+## 💬 反馈
 
-## Web 版地图查看器
+发现问题 bug，或希望接入某个游戏引擎？请到
+[Issues 区](https://github.com/steven0lisa/game-wallpaper/issues) 反馈——也可以用
+App 内 About 窗口的 **Feedback** 按钮。附上截图会大大方便定位。
 
-`web/` 是同源逻辑的浏览器版：Node 后端（零依赖，移植同一套 lod/def/h3m 解析器，
-位于 `web/server/engines/heroes3/`）+ HTML Canvas 前端，渲染完整地图，支持拖拽/
-缩放/切图/动画。macOS app 菜单栏的「Map Viewer」内置同一套 HTTP API
-（`/api/maps`、`/api/scene`、`/atlas/...`）。
+## 🗺 路线图
 
-```bash
-cd web && npm start   # http://localhost:8765/
-```
+- [x] 英雄无敌 III 引擎（macOS + Web 查看器）
+- [ ] 更多引擎——如仙剑、星际争霸——基于插件式引擎接口
+      （[架构指南](docs/zh-CN/architecture.md)）
+- [ ] 地下层支持、英雄/旗帜的玩家色染色
 
-## 版本与发布
+## 🛠 开发者
 
-- 版本号格式 **`v<major>.<minor>`**（git tag，如 `v1.0`），tag 与 Release 一一对应。
-- push tag 后 GitHub Actions 自动：双架构构建 → 打包 dmg（内置 3 张 XL 大地图，
-  加密副本解密；精灵资源仍需用户自备）→ 生成更新说明（自上个 tag 以来的
-  feat/fix 分组）→ 发布 GitHub Release。
-  见 [.github/workflows/release.yml](.github/workflows/release.yml)。
-- 发版流程：
+壁纸运行时与引擎解耦（SwiftPM：`WallpaperCore` 壳 + 可插拔引擎 target）；
+push `v<major>.<minor>` tag 即自动构建发布 Release。源码构建方法与渲染语义见文档：
 
-  ```bash
-  git tag v1.1 && git push origin v1.1
-  ```
+| 文档 | 内容 |
+|---|---|
+| [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md) | 引擎协议、如何接入新游戏 |
+| [docs/zh-CN/environment.md](docs/zh-CN/environment.md) | 资产布局、工具链、命令速查 |
+| [docs/zh-CN/rendering.md](docs/zh-CN/rendering.md) | 渲染语义与 VCMI 对照（一致性基线） |
+| [docs/zh-CN/formats.md](docs/zh-CN/formats.md) | HoMM3 文件格式逆向笔记 |
+| [docs/zh-CN/pitfalls.md](docs/zh-CN/pitfalls.md) | 29 条实战踩坑记录 |
+| [web/README.zh-CN.md](web/README.zh-CN.md) | 浏览器版地图查看器 |
 
-- 本地构建可覆盖版本：`MARKETING_VERSION=1.1 BUILD_NUMBER=42 ./scripts/build_app.sh`。
+English docs: [docs/](docs/)（每篇文档顶部可互相跳转）。
 
-## 已知限制 / 后续
+## 🙏 致谢
 
-- 只渲染地表层（underground 层已解析，可在 WallpaperPresenter 里切换 level=1）。
-- 英雄/旗帜未做玩家色染色（def 索引 5 已留位）；每 15 分钟换图时可加 underground 轮换。
-- 战争迷雾、英雄移动动画不适用（壁纸无游戏状态）。
-- dmg 为未签名构建：首次打开若被 Gatekeeper 拦截，右键 → Open，或
-  `xattr -d com.apple.quarantine /Applications/GameWallpaper.app`。
+- [VCMI](https://github.com/vcmi/vcmi) —— 本项目对齐的渲染语义与文件格式权威参考
+- [IlyaPomaskin/h3lwp](https://github.com/IlyaPomaskin/h3lwp) —— 启发本项目解析器
+  与图层行为的 Android 动态壁纸
 
-## 参考
+## 📄 许可
 
-- [VCMI](https://github.com/vcmi/vcmi)（渲染语义与格式权威参考）
-- [IlyaPomaskin/h3lwp](https://github.com/IlyaPomaskin/h3lwp)（Android 版 Heroes 3
-  live wallpaper，本项目解析器/图层行为的基线）
+代码以 [MIT License](LICENSE) 发布。游戏资源**不包含**在本仓库及其发布物中，
+版权归各自权利人所有。
