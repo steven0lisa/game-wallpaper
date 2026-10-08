@@ -68,9 +68,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Web 地图查看器：点击菜单项时才启动服务（省内存/CPU）
         self.webServer = MapWebServer(presenter: presenter, engine: engine)
-        // 换图后作废 viewer 的场景缓存（持有整份图集页像素拷贝，不释放则驻留旧图内存）
+        // 换图后：作废 viewer 场景缓存（持有整份图集页像素拷贝）+ 刷新菜单标题
+        // （否则标题永远停留在加载瞬间显示的 "Loading…"）
         presenter.onSceneChanged = { [weak self] in
             self?.webServer?.invalidateSceneCache()
+            self?.updateMenuTitle()
         }
 
         loadMaps()
@@ -200,6 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let name = presenter?.current?.url.lastPathComponent
             ?? (presenter?.loading == true ? NSLocalizedString("Menu.Loading", value: "Loading…", comment: "") : NSLocalizedString("Menu.NoMap", value: "No map loaded", comment: ""))
         sceneTitleItem.title = "\(type(of: engine).displayName) — \(name)"
+        debugLog("MENU title: \(sceneTitleItem.title)")
     }
 
     @objc private func nextMap() {
