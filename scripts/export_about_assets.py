@@ -3,7 +3,7 @@
 button) from H3sprite.lod so the packaged app is self-contained (no vcmi needed at
 runtime for the About window).
 
-Mirrors the project's Swift DefFile decoder (Sources/Heroes3Wallpaper/DefFile.swift):
+Mirrors the project's Swift DefFile decoder (Sources/Heroes3Engine/DefFile.swift):
   - DEF header is [type u32][fullWidth u32][fullHeight u32][blockCount u32][palette 768]
   - block table: [blockID u32][totalEntries u32][unknown 8][frameNames 13*totalEntries]
                  [frameOffsets u32*totalEntries]

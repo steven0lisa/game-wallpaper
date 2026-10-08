@@ -1,7 +1,9 @@
-# 构建产物
+# ---- 构建产物 ----
 .build/
 build/
 dist/
+web/node_modules/
+web/server/cache/
 
 # macOS / Xcode
 .DS_Store
@@ -9,21 +11,29 @@ dist/
 xcuserdata/
 DerivedData/
 
-# Windows 构建产物
-windows/dist/
-windows/deploy/
-windows/*.exe
-windows/*.pdb
-windows/*.obj
-windows/*.ilk
+# ---- Agent 本地工作目录/笔记（内部信息，永不入库）----
+.findings/
+.zcode/
+AGENTS.md
 
-# Android 原始资源包（体积大，不入库；解包地图见 base.apk_assets_maps 或另行管理）
+# ---- 逆向/原版游戏资源（版权属 Ubisoft/New World Computing，严禁入库）----
+# Android 参考产物与其解包目录
 base.apk
+base.apk_*/
+*.apk
+# 原版游戏数据文件与解包产物（H3sprite.lod、*.h3m 地图、PCX 素材等）
+*.lod
+*.h3m
+*.pcx
+extracted/
+raw-assets/
+assets/
 
-# Node / Web
-web/node_modules/
-web/server/cache/
+# ---- Windows 版本已移除 ----
+windows/
 
-# 运行时临时文件
+# ---- 运行时临时文件 ----
 *.log
 /tmp/
+__pycache__/
+.v2c/

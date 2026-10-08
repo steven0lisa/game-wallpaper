@@ -1,7 +1,7 @@
-/* Heroes 3 Wallpaper — 英文本地化 */
+/* Game Wallpaper — English */
 "Menu.Pause" = "Pause";
 "Menu.Resume" = "Resume";
-"Menu.About" = "About Heroes 3 Wallpaper…";
+"Menu.About" = "About Game Wallpaper…";
 "Menu.NextMap" = "Next Map Now";
 "Menu.Zoom" = "Zoom";
 "Menu.Darker" = "Darker";
@@ -11,5 +11,5 @@
 "Menu.MapViewer" = "Map Viewer";
 "Menu.Loading" = "Loading…";
 "Menu.NoMap" = "No map loaded";
-"Menu.Quit" = "Quit Heroes 3 Wallpaper";
+"Menu.Quit" = "Quit Game Wallpaper";
 "About.OK" = "OK";

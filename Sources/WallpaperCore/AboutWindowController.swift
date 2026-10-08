@@ -6,10 +6,10 @@ import AppKit
 /// DIALGBOX.def 的帧按 4 角 + 4 边平铺成边框（角贴、边沿轴步进），内部平铺
 /// DIBOXBCK.PCX 棕纸作背景；中央循环播放 cangel.def 的天使待机动画；
 /// 下方 IOKAY32 精灵作 OK 按钮。文案走系统本地化。
-final class AboutWindowController: NSWindowController {
+public final class AboutWindowController: NSWindowController {
     private let content = AboutContent()
 
-    init() {
+    public init() {
         // 窗口 = DIALGBOX 边框画布，尺寸取 64px 网格（128 + 64k）：512×448。
         // 边条恰好铺满：上下各 6 条、左右各 5 条、四角各一，无裁切、无重叠、无缝隙。
         // 内容区 = 内缩 左右 14 / 上下 15 → 484×418。
@@ -32,7 +32,7 @@ final class AboutWindowController: NSWindowController {
 
     required init?(coder: NSCoder) { nil }
 
-    func show() {
+    public func show() {
         window?.center()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

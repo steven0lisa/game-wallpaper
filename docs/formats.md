@@ -266,7 +266,7 @@ u32 objectCount
 ```
 
 **⚠️ 大多数对象类型 payload 为 0 字节。** 需要读数据的高频类型（完整表见
-`Sources/Heroes3Wallpaper/H3mFile.swift skipObjectPayload`，已与 VCMI 逐 case 核对）：
+`Sources/Heroes3Engine/H3mFile.swift skipObjectPayload`，已与 VCMI 逐 case 核对）：
 
 | objectId | 类型 | payload |
 |---|---|---|

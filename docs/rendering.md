@@ -108,7 +108,7 @@ EDG.DEF 36 帧 + `getIndexForTile` 公式（formats.md §5）。
 复现对比：
 ```bash
 # 本项目渲染（与编辑器画布同像素尺度）
-.build/debug/Heroes3Wallpaper --snapshot "<map.h3m>" --out mine.png \
+.build/debug/GameWallpaper --snapshot "<map.h3m>" --out mine.png \
     --width 1152 --height 1152 --time-ms 0 --zoom 1 --center-x 0.5 --center-y 0.5
 # 打开编辑器看同一地图（vcmieditor 与游戏共用渲染器）
 /Applications/VCMI.app/Contents/MacOS/vcmieditor "<map.h3m>"

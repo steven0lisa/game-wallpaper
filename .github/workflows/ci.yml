@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  macos-build:
+    name: macOS universal build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build arm64 + x86_64 (release)
+        run: |
+          swift build -c release --arch arm64
+          swift build -c release --arch x86_64
+
+  web-check:
+    name: Web syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: node --check all server js
+        run: |
+          find web/server -name '*.js' -print0 | xargs -0 -n1 node --check

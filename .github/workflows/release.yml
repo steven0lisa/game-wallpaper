@@ -1,0 +1,47 @@
+name: Release
+
+# 版本号管理：git tag v{major}.{minor}（如 v1.0）即发布版本，tag 与 Release 一一对应。
+# push tag → 双架构构建 → dmg（lite，无版权资源）→ 自动生成更新说明 → GitHub Release。
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release-dmg:
+    name: Build dmg & publish release
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # gen_release_notes / rev-list 需要完整历史
+
+      - name: Validate tag format (v{major}.{minor})
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "tag: $TAG"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+$ ]] || {
+            echo "ERROR: 版本号必须是 v{major}.{minor} 两段格式（如 v1.0），收到: $TAG" >&2
+            exit 1
+          }
+
+      - name: Build universal app + dmg (lite, no game assets)
+        run: REQUIRE_ASSETS=0 ./scripts/build_app.sh
+        env:
+          MARKETING_VERSION: ${{ github.ref_name }}
+          BUILD_NUMBER: ref-${{ github.ref_name }}
+
+      - name: Generate release notes
+        run: |
+          chmod +x scripts/gen_release_notes.sh
+          scripts/gen_release_notes.sh "${GITHUB_REF_NAME}" > build/release-notes.md
+          cat build/release-notes.md
+
+      - name: Upload dmg to release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: build/release-notes.md
+          files: build/GameWallpaper.dmg
+          fail_on_unmatched_files: true

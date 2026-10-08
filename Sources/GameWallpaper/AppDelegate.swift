@@ -1,14 +1,17 @@
 import AppKit
 import MetalKit
+import WallpaperCore
+import Heroes3Engine
 
+/// 装配层：选择引擎（当前注册 Heroes3Engine）、创建壁纸壳组件、挂菜单栏 UI。
+/// 接入新引擎时在 applicationDidFinishLaunching 里替换/扩展 engine 的构造即可。
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var windowController: WallpaperWindowController?
-    private var presenter: MapPresenter?
-    private var renderer: MapRenderer?
+    private var presenter: WallpaperPresenter?
     private var aboutController: AboutWindowController?
-
     private var webServer: MapWebServer?
+    private var engine: Heroes3Engine?
 
     private var mapsFolder: URL {
         let saved = UserDefaults.standard.string(forKey: "mapsFolder")
@@ -24,42 +27,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let saved, FileManager.default.fileExists(atPath: saved) {
             return URL(fileURLWithPath: saved)
         }
-        // app 内置资源（自包含分发）：Resources/Data/H3sprite.lod
-        if let res = Bundle.main.resourceURL,
-           FileManager.default.fileExists(atPath: res.appendingPathComponent("Data/H3sprite.lod").path) {
-            return res
-        }
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/vcmi")
+        return Heroes3Engine.defaultDataDir()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let device = MTLCreateSystemDefaultDevice(),
-              let renderer = try? MapRenderer(device: device) else {
-            NSLog("Heroes3Wallpaper: Metal unavailable")
+              let engine = try? Heroes3Engine(device: device, dataDir: dataDir) else {
+            NSLog("GameWallpaper: Metal unavailable or Heroes3 assets missing (dataDir=\(dataDir.path))")
             return
         }
-        self.renderer = renderer
+        self.engine = engine
 
-        let presenter = MapPresenter(renderer: renderer)
+        let presenter = WallpaperPresenter(engine: engine)
         presenter.zoom = Float(UserDefaults.standard.double(forKey: "zoom").nonZero ?? 2.0) // 默认 2×
         presenter.brightness = Float(UserDefaults.standard.double(forKey: "brightness"))
         presenter.mapCycleInterval = UserDefaults.standard.double(forKey: "mapCycleSeconds").nonZero ?? 900
-        let library = AssetLibrary(lodURL: dataDir.appendingPathComponent("Data/H3sprite.lod"))
-        NSLog("Heroes3Wallpaper: library %@ mapsFolder=%@", library != nil ? "loaded" : "FAILED", mapsFolder.path)
-        presenter.library = library
+        NSLog("GameWallpaper: engine %@ ready, dataDir=%@ mapsFolder=%@",
+              Heroes3Engine.engineID, dataDir.path, mapsFolder.path)
         self.presenter = presenter
 
         let floating = CommandLine.arguments.contains("--level-floating") // verification aid
-        let controller = WallpaperWindowController(renderer: renderer, floating: floating)
+        let controller = WallpaperWindowController(device: device, floating: floating)
         controller.view.delegate = presenter
         presenter.renderView = controller.view // 电池模式经此 isPaused 停/启渲染循环
         self.windowController = controller
 
         // Web 地图查看器：点击菜单项时才启动服务（省内存/CPU）
-        self.webServer = MapWebServer(presenter: presenter)
+        self.webServer = MapWebServer(presenter: presenter, engine: engine)
         // 换图后作废 viewer 的场景缓存（持有整份图集页像素拷贝，不释放则驻留旧图内存）
-        presenter.onMapChanged = { [weak self] in
+        presenter.onSceneChanged = { [weak self] in
             self?.webServer?.invalidateSceneCache()
         }
 
@@ -77,29 +73,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func loadMaps() {
         let folder = mapsFolder
         let urls = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.fileSizeKey])) ?? [])
-            .filter { $0.pathExtension.lowercased() == "h3m" }
+            .filter { Self.sceneExtensions.contains($0.pathExtension.lowercased()) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
-        presenter?.setMaps(urls.isEmpty ? Self.bundledMaps() : urls)
+        presenter?.setMaps(urls.isEmpty ? Self.bundledScenes() : urls)
         updateMenuTitle()
     }
 
-    static func bundledMaps() -> [URL] {
-        Bundle.main.urls(forResourcesWithExtension: "h3m", subdirectory: nil) ?? []
+    static let sceneExtensions = Heroes3Engine.sceneExtensions
+
+    static func bundledScenes() -> [URL] {
+        sceneExtensions.flatMap { ext in
+            Bundle.main.urls(forResourcesWithExtension: ext, subdirectory: nil) ?? []
+        }
     }
 
     // MARK: - Status item menu
 
-    private lazy var mapTitleItem = NSMenuItem(title: "Heroes 3 Wallpaper", action: nil, keyEquivalent: "")
+    private lazy var sceneTitleItem = NSMenuItem(title: "Game Wallpaper", action: nil, keyEquivalent: "")
     private var zoomItems: [NSMenuItem] = []
     private let pauseItem = NSMenuItem(title: NSLocalizedString("Menu.Pause", value: "Pause", comment: ""), action: #selector(togglePause), keyEquivalent: "p")
 
-    private let aboutItem = NSMenuItem(title: NSLocalizedString("Menu.About", value: "About Heroes 3 Wallpaper…", comment: ""), action: #selector(showAbout), keyEquivalent: "")
+    private let aboutItem = NSMenuItem(title: NSLocalizedString("Menu.About", value: "About Game Wallpaper…", comment: ""), action: #selector(showAbout), keyEquivalent: "")
 
     private func buildMenu() {
         let menu = NSMenu()
 
-        mapTitleItem.isEnabled = false
-        menu.addItem(mapTitleItem)
+        sceneTitleItem.isEnabled = false
+        menu.addItem(sceneTitleItem)
         menu.addItem(.separator())
 
         let next = NSMenuItem(title: NSLocalizedString("Menu.NextMap", value: "Next Map Now", comment: ""), action: #selector(nextMap), keyEquivalent: "n")
@@ -152,20 +152,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(aboutItem)
         menu.addItem(.separator())
 
-        let quit = NSMenuItem(title: NSLocalizedString("Menu.Quit", value: "Quit Heroes 3 Wallpaper", comment: ""), action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: NSLocalizedString("Menu.Quit", value: "Quit Game Wallpaper", comment: ""), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "🏰"
+        item.button?.title = "🎮"
         item.menu = menu
         statusItem = item
     }
 
     private func updateMenuTitle() {
+        let engineName = engine.map { type(of: $0).displayName } ?? ""
         let name = presenter?.current?.url.lastPathComponent
             ?? (presenter?.loading == true ? NSLocalizedString("Menu.Loading", value: "Loading…", comment: "") : NSLocalizedString("Menu.NoMap", value: "No map loaded", comment: ""))
-        mapTitleItem.title = "Heroes 3 Wallpaper — \(name)"
+        sceneTitleItem.title = engineName.isEmpty ? "Game Wallpaper — \(name)" : "\(engineName) — \(name)"
     }
 
     @objc private func nextMap() {
@@ -188,7 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func setZoom(_ sender: NSMenuItem) {
         let zoom = Float([1.0, 2.0, 3.0, 4.0][sender.tag])
-        presenter?.zoom = zoom // screen px per map px
+        presenter?.zoom = zoom // screen px per world px
         for (i, item) in zoomItems.enumerated() { item.state = i == sender.tag ? .on : .off }
         UserDefaults.standard.set(Double(zoom), forKey: "zoom")
     }
@@ -214,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
-        panel.allowedFileTypes = ["h3m"]
+        panel.allowedFileTypes = Self.sceneExtensions
         if panel.runModal() == .OK {
             UserDefaults.standard.set(panel.urls.first?.deletingLastPathComponent().path ?? mapsFolder.path, forKey: "mapsFolder")
             presenter?.setMaps(Array(panel.urls))

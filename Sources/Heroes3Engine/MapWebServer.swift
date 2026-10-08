@@ -2,6 +2,7 @@ import Foundation
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
+import WallpaperCore
 
 /// 内置 Web 地图查看器服务：把当前地图（或按需加载的内置地图）以
 /// 与 web/ 版完全兼容的 HTTP API 提供出去，浏览器直接打开即可查看。
@@ -10,8 +11,9 @@ import UniformTypeIdentifiers
 ///   /api/maps             内置地图列表
 ///   /api/scene?map=&level= 场景 JSON（frames/terrain/rivers/roads/objects/pages）
 ///   /atlas/<map>/level<N>-<ver>/atlas-N.png  图集页 PNG
-final class MapWebServer {
-    private weak var presenter: MapPresenter?
+public final class MapWebServer {
+    private weak var presenter: WallpaperPresenter?
+    private let engine: Heroes3Engine
     private(set) var port = 0
     private var listenFD: Int32 = -1
     private var thread: Thread?
@@ -25,7 +27,7 @@ final class MapWebServer {
 
     /// 换图时作废场景缓存：cachedScene 持有整份图集页像素拷贝（每页 16MB），
     /// 不作废则旧地图的副本会驻留到下次 viewer 请求或闲置退出。
-    func invalidateSceneCache() {
+    public func invalidateSceneCache() {
         lock.lock()
         cachedScene = nil
         lock.unlock()
@@ -33,12 +35,13 @@ final class MapWebServer {
 
     struct SceneBuildError: Error {}
 
-    init(presenter: MapPresenter) {
+    public init(presenter: WallpaperPresenter, engine: Heroes3Engine) {
         self.presenter = presenter
+        self.engine = engine
     }
 
     /// 启动（幂等），返回可打开的 URL
-    func startAndGetURL() -> URL {
+    public func startAndGetURL() -> URL {
         lock.lock()
         if listenFD >= 0 {
             lock.unlock()
@@ -73,11 +76,11 @@ final class MapWebServer {
         let t = Thread { [weak self] in
             self?.acceptLoop()
         }
-        t.name = "h3-webviewer"
+        t.name = "webviewer"
         t.stackSize = 1 << 22
         t.start()
         thread = t
-        NSLog("Heroes3Wallpaper: web viewer on http://127.0.0.1:%d", port)
+        NSLog("GameWallpaper: web viewer on http://127.0.0.1:%d", port)
         return URL(string: "http://127.0.0.1:\(port)/?map=\(currentMapQuery())")!
     }
 
@@ -113,7 +116,7 @@ final class MapWebServer {
         lock.lock()
         cachedScene = nil
         lock.unlock()
-        NSLog("Heroes3Wallpaper: web viewer stopped (idle)")
+        NSLog("GameWallpaper: web viewer stopped (idle)")
     }
 
     private func handle(conn: Int32) {
@@ -239,24 +242,23 @@ final class MapWebServer {
         defer { lock.unlock() }
         if let c = cachedScene, c.name == name { return c }
 
-        var h3m: H3mFile?
-        if let cur = presenter?.current, cur.url.lastPathComponent == name {
+        if let cur = presenter?.current,
+           cur.url.lastPathComponent == name,
+           let h3scene = cur.scene as? Heroes3Scene {
             // 当前地图：直接复用已构建的 Metal 图集（零额外开销）
-            let frames = cur.atlas.packedEntries()
-            let json = buildSceneJSON(map: cur.map, atlasPages: cur.atlas.pageCount,
+            let frames = h3scene.atlas.packedEntries()
+            let json = buildSceneJSON(map: h3scene.map, atlasPages: h3scene.atlas.pageCount,
                                       frames: frames.map { ($0.key, $0.pf) },
-                                      objects: cur.map.objects, atlasVersion: atlasVersion(name: name, frames: frames.count, objects: cur.map.objects.count))
-            let scene = ViewerScene(name: name, json: json, pages: (0..<cur.atlas.pageCount).map { cur.atlas.pageRGBA($0) })
+                                      objects: h3scene.map.objects, atlasVersion: atlasVersion(name: name, frames: frames.count, objects: h3scene.map.objects.count))
+            let scene = ViewerScene(name: name, json: json, pages: (0..<h3scene.atlas.pageCount).map { h3scene.atlas.pageRGBA($0) })
             cachedScene = scene
             return scene
         }
         // 其他内置地图：按需解析 + 构图集
         guard let url = presenter?.mapURLs.first(where: { $0.lastPathComponent == name }),
-              let parsed = try? H3mFile(url: url),
-              let lib = presenter?.library else { return nil }
-        h3m = parsed
-        let gameMap = GameMap(h3m: parsed, library: lib, level: level)
-        let atlas = AtlasBuilder.build(map: gameMap, library: lib)
+              let parsed = try? H3mFile(url: url) else { return nil }
+        let gameMap = GameMap(h3m: parsed, library: engine.library, level: level)
+        let atlas = AtlasBuilder.build(map: gameMap, library: engine.library)
         let frames = atlas.packedEntries()
         let json = buildSceneJSON(map: gameMap, atlasPages: atlas.pageCount,
                                   frames: frames.map { ($0.key, $0.pf) },

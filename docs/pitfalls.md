@@ -222,35 +222,6 @@ Web 导出的 PNG 需要反预乘回直通 alpha（本项目图集阴影全黑�
 **教训**：启用纹理线性过滤的那一刻就要决定 alpha 预乘策略；"混色出暗边"是
 非预乘 + 线性过滤的标志性伪影。
 
-## 19. 远程验证 GUI 的三个坑（SSH + 虚拟会话）
-
-1. **SSH 启动的 GUI 进程在 Services 会话**，桌面上不可见。要让它出现在用户桌面，
-   用 `schtasks /create /it`（交互式令牌）+ `schtasks /run` 启动。
-2. **session 0/远程上下文里 FindWindow/EnumWindows 看不到其他会话的窗口**，
-   截图 API（CopyFromScreen）在断开/锁屏的会话里只能截到全黑。
-   验证画面内容用应用**自带的能力**：触发文件（shot.flag）→ 进程自己导出帧缓冲。
-3. **模板匹配在重复像素画上不可信**：草地纹理周期重复、同贴图城堡遍地都是，
-   400px 模板能在 100~200px 错位处拿到 0.99+ 的假匹配。对齐要用孤立地标
-   （独特建筑）多点一致才可信，且先排除"两次渲染随机物件不同"的干扰
-   （RANDOM_* 物件每次启动随机具象化）。
-
-## 20. RDP 远端/无人值守会话下 Progman 不存在
-
-**现象**：在 `dev-box` 这台无人值守 RDP 会话里，调用
-`FindWindowW(L"Progman", nullptr)` 总是返回 0；0x052C 之后也找不到 WorkerW；
-`System.Windows.Forms.SystemInformation::UserInteractive` 报 `False`。
-**后果**：WorkerW 注入失败，壁纸窗口只能走后备全屏路径，桌面会"开一个全屏窗口覆盖桌面"
-—— 不是软件 bug，是该远程环境下无桌面层（Explorer 也没跑）。
-
-**解决**：
-- 主路径（标准）见源码 `wallpaper_win.cpp::attachToWorkerW`：豆包推荐模板，标准桌面会话下生效
-- 后备路径：INI `[wallpaper] allowFallback=1` 时退化为最底层全屏窗口（HWND_BOTTOM + SWP_NOACTIVATE），
-  不抢焦点、不进 Alt-Tab；后台每 5s 重试 WorkerW，Explorer 启动后自动迁移到桌面层
-- 真机（用户日常桌面）验证：双屏 + Explorer 运行时，壁纸正确挂在 WorkerW 下
-
-**教训**：在远端/无人值守机器上做 GUI 软件的功能验证，WorkerW 注入几乎不可能成功；
-要"看到地图"必须用后备路径或直接验证渲染缓冲本身（如 shot.flag → bmp）。
-
 ## 21. h3m 头解析：size 字段偏移不是 0
 
 **现象**：用 `struct.unpack("<iiI", raw)` 读 h3m 头（version, ?, size）时，得到的 size

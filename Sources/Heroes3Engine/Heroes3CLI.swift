@@ -1,40 +1,32 @@
-import AppKit
+import Foundation
 import MetalKit
+import WallpaperCore
 
-// MARK: - Entry point
-//
-// Two modes:
-//   GUI (default): menu-bar app that renders the animated map as the desktop wallpaper.
-//   CLI:   Heroes3Wallpaper --snapshot <map.h3m> --out <png> [--data-dir <vcmi dir>]
-//                 [--width 1920 --height 1080 --time-ms 0 --zoom 1 --center-x 0.5 --center-y 0.5 --level 0]
-//          Headless single-frame render for end-to-end verification.
+/// Heroes3 引擎的命令行诊断入口（headless）：
+///   GameWallpaper --snapshot <map.h3m> --out <png> [--data-dir <dir>]
+///                 [--width 1920 --height 1080 --time-ms 0 --zoom 1
+///                  --center-x 0.5 --center-y 0.5 --level 0]
+///                 （单帧渲染，端到端验证）
+///   GameWallpaper --probe-def <DEF名> [--data-dir <dir>]（DEF 解码诊断）
+///   GameWallpaper --tile <x> <y> --snapshot <map.h3m>（图块解析诊断）
+/// 返回 true 表示参数命中引擎 CLI（调用方应随即 exit）。
+public enum Heroes3CLI {
+    public static func dispatch(_ args: [String]) -> Bool {
+        if let tileIdx = args.firstIndex(of: "--tile"), tileIdx + 2 < args.count {
+            probeTile(Int(args[tileIdx+1]) ?? 0, Int(args[tileIdx+2]) ?? 0, args)
+            return true
+        }
+        if let probeIdx = args.firstIndex(of: "--probe-def"), probeIdx + 1 < args.count {
+            probeDef(args[probeIdx + 1], args)
+            return true
+        }
+        if args.contains("--snapshot") {
+            run(args)
+            return true
+        }
+        return false
+    }
 
-let arguments = CommandLine.arguments
-
-if let tileIdx = arguments.firstIndex(of: "--tile"), tileIdx + 2 < arguments.count {
-    SnapshotCLI.probeTile(Int(arguments[tileIdx+1]) ?? 0, Int(arguments[tileIdx+2]) ?? 0, arguments)
-    exit(0)
-}
-
-if let probeIdx = arguments.firstIndex(of: "--probe-def"), probeIdx + 1 < arguments.count {
-    SnapshotCLI.probeDef(arguments[probeIdx + 1], arguments)
-    exit(0)
-}
-
-if arguments.contains("--snapshot") {
-    SnapshotCLI.run(arguments)
-    exit(0)
-}
-
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-app.setActivationPolicy(.accessory)
-app.run()
-
-// MARK: - Snapshot CLI
-
-enum SnapshotCLI {
     static func value(_ args: [String], _ flag: String, _ fallback: String) -> String {
         if let i = args.firstIndex(of: flag), i + 1 < args.count { return args[i + 1] }
         return fallback
@@ -57,8 +49,7 @@ enum SnapshotCLI {
             exit(2)
         }
 
-        let defaults = Self.defaultDataDir(dataDir)
-        let lodURL = defaults.appendingPathComponent("Data/H3sprite.lod")
+        let lodURL = Heroes3Engine.defaultDataDir(dataDir).appendingPathComponent("Data/H3sprite.lod")
         guard let library = AssetLibrary(lodURL: lodURL) else {
             FileHandle.standardError.write("snapshot: cannot open \(lodURL.path)\n".data(using: .utf8)!)
             exit(2)
@@ -114,7 +105,7 @@ enum SnapshotCLI {
 
     static func probeTile(_ tx: Int, _ ty: Int, _ args: [String]) {
         let mapPath = value(args, "--snapshot", "")
-        let lodURL = defaultDataDir(value(args, "--data-dir", "")).appendingPathComponent("Data/H3sprite.lod")
+        let lodURL = Heroes3Engine.defaultDataDir(value(args, "--data-dir", "")).appendingPathComponent("Data/H3sprite.lod")
         guard let h3m = try? H3mFile(url: URL(fileURLWithPath: mapPath)),
               let library = AssetLibrary(lodURL: lodURL),
               let tile = h3m.tile(x: tx, y: ty, level: 0) else {
@@ -139,7 +130,7 @@ enum SnapshotCLI {
     }
 
     static func probeDef(_ name: String, _ args: [String]) {
-        let lodURL = defaultDataDir(value(args, "--data-dir", "")).appendingPathComponent("Data/H3sprite.lod")
+        let lodURL = Heroes3Engine.defaultDataDir(value(args, "--data-dir", "")).appendingPathComponent("Data/H3sprite.lod")
         guard let library = AssetLibrary(lodURL: lodURL), let def = library.def(named: name) else {
             print("probe: cannot load \(name)")
             return
@@ -173,16 +164,5 @@ enum SnapshotCLI {
             }
         }
         print("  palette[0..31]: \(Array(def.palette.prefix(96)))")
-    }
-
-    static func defaultDataDir(_ override: String) -> URL {
-        if !override.isEmpty { return URL(fileURLWithPath: override) }
-        // app 内置资源（自包含分发）：Resources/Data/H3sprite.lod
-        if let res = Bundle.main.resourceURL,
-           FileManager.default.fileExists(atPath: res.appendingPathComponent("Data/H3sprite.lod").path) {
-            return res
-        }
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home.appendingPathComponent("Library/Application Support/vcmi")
     }
 }

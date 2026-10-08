@@ -4,6 +4,7 @@ import simd
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
+import WallpaperCore
 
 /// One sprite drawn as an instanced quad. Field layout matches the Metal shader struct
 /// (struct size rounds up to 64 bytes due to float4 alignment).
@@ -407,7 +408,7 @@ final class MapRenderer {
         guard cycle <= Self.maxLoopCycle, estBytes <= Self.maxLoopCacheBytes else {
             if lastRejectedScene != sceneKey {
                 lastRejectedScene = sceneKey
-                NSLog("Heroes3Wallpaper: loop cache skipped cycle=%d instances=%d estBytes=%d", cycle, instanceCount, estBytes)
+                NSLog("GameWallpaper: loop cache skipped cycle=%d instances=%d estBytes=%d", cycle, instanceCount, estBytes)
                 debugLog("loop-cache skipped cycle=\(cycle) instances=\(instanceCount) estBytes=\(estBytes) [\(map.size)x\(map.size)]")
             }
             return
@@ -443,13 +444,13 @@ final class MapRenderer {
                 // 作废时本闭包持有的 buffers/counts 随闭包退出释放，不会滞留。
                 guard ok, self.latestScene == sceneKey, self.generation == sceneKey.gen else {
                     if ok {
-                        NSLog("Heroes3Wallpaper: loop cache discarded (scene changed during build) cycle=%d", cycle)
+                        NSLog("GameWallpaper: loop cache discarded (scene changed during build) cycle=%d", cycle)
                         debugLog("loop-cache discarded cycle=\(cycle)")
                     }
                     return
                 }
                 self.loopCache = LoopCache(key: sceneKey, cycle: cycle, buffers: buffers, counts: counts)
-                NSLog("Heroes3Wallpaper: loop cache ready cycle=%d instances=%d", cycle, counts.first ?? 0)
+                NSLog("GameWallpaper: loop cache ready cycle=%d instances=%d", cycle, counts.first ?? 0)
                 debugLog("loop-cache ready cycle=\(cycle) first=\(counts.first ?? 0) n=\(counts.count)")
             }
         }
@@ -547,7 +548,7 @@ final class MapRenderer {
         encoder.endEncoding()
         cmd.addCompletedHandler { [weak self] _ in
             if let self, let err = cmd.error {
-                NSLog("Heroes3Wallpaper: command buffer error: \(err)")
+                NSLog("GameWallpaper: command buffer error: \(err)")
             }
             self?.frameSlots.signal()
         }
@@ -658,18 +659,4 @@ final class MapRenderer {
 
 private extension Int {
     var f: Float { Float(self) }
-}
-
-/// 诊断文件日志：LSUIElement 应用的 NSLog 不落到标准输出，排查渲染/缓存问题时
-/// 追加到 /tmp/heroes3wallpaper.log，便于按"日志先行"原则复现（临时保留）。
-func debugLog(_ msg: String) {
-    let line = "\(Date()) \(msg)\n"
-    if let d = line.data(using: .utf8),
-       let fh = FileHandle(forWritingAtPath: "/tmp/heroes3wallpaper.log") {
-        _ = try? fh.seekToEnd()
-        _ = try? fh.write(contentsOf: d)
-        _ = try? fh.close()
-    } else {
-        _ = try? line.write(toFile: "/tmp/heroes3wallpaper.log", atomically: true, encoding: .utf8)
-    }
 }

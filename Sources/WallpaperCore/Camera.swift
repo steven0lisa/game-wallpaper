@@ -4,7 +4,7 @@ import simd
 /// 跳点相机：每隔 `switchInterval` 秒在地图内随机挑一个可见点（cover 视口范围内），
 /// 用 ease-in-out 插值滑过去，落在新点停留到下一次切换。
 /// 比连续漫游更像正式游戏的关卡浏览：画面内容明显变化、节拍有间隔、不耗 CPU。
-struct Camera {
+public struct Camera {
     var center: SIMD2<Float> = .init(repeating: 0)
     /// 目标点（下一处停留的位置）
     private var target: SIMD2<Float> = .init(repeating: 0)

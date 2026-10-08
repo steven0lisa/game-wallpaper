@@ -6,9 +6,9 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { LodFile } = require('./LodFile');
-const { H3mFile } = require('./H3mFile');
-const { AssetLibrary, buildScene, encodePng } = require('./Scene');
+const { LodFile } = require('./engines/heroes3/LodFile');
+const { H3mFile } = require('./engines/heroes3/H3mFile');
+const { AssetLibrary, buildScene, encodePng } = require('./engines/heroes3/Scene');
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8765;
 const VCMI_DIR = process.env.H3_DATA_DIR ||
