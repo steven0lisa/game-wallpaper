@@ -27,8 +27,9 @@ echo "### 📦 Other"
 log | grep -vE '^- (feat|add|support|fix)' || echo "- (none)"
 echo
 echo "---"
-echo "ℹ️ 发布的 dmg 为 **lite 版**：不含任何原版游戏资源（版权资产不入库）。"
-echo "首次运行后在菜单栏指定游戏数据目录（如 VCMI 的目录）与地图目录即可。"
+echo "ℹ️ dmg 内置 3 张 XL 大地图（未指定地图目录时自动加载）；精灵资源"
+echo "（H3sprite.lod，需自备原版游戏文件）不入库——首次运行请在菜单栏"
+echo "「Choose Data Folder…」指定游戏数据目录（如 VCMI 的目录）。"
 echo "未签名构建：若被 Gatekeeper 拦截，右键 → Open，或 \`xattr -d com.apple.quarantine /Applications/GameWallpaper.app\`。"
 if [ -n "$PREV" ]; then
     echo

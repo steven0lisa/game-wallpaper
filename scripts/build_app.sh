@@ -51,16 +51,26 @@ else
     echo "WARN: REQUIRE_ASSETS=0 —— 打包无资源 lite 版，运行时需用户指定数据目录" >&2
 fi
 
-# 内置地图：从 VCMI 地图目录拷贝 .h3m（相近名去重，总量截到 ~80MB 保证 dmg 合理）
+# 内置大地图：scripts/bundled_maps.txt 固定 3 张 XL（见清单）。
+# 来源优先级：本机 MAP_SRC 明文 > 仓库加密副本解密（需 BUNDLED_MAPS_PASS，CI 走 GitHub Secret）。
+# 都拿不到时：REQUIRE_ASSETS=1 报错拒绝出包；=0 则 WARN 出无地图包。
 MAP_SRC="${MAP_SRC:-$HOME/Library/Application Support/vcmi/Maps}"
-if [ -d "$MAP_SRC" ]; then
-    LIMIT=83886080
-    [ "$REQUIRE_ASSETS" = "1" ] || LIMIT=20971520   # lite 版只带 20MB 示例地图
-    python3 scripts/pick_maps.py "$APP/Contents/Resources" "$LIMIT" "$MAP_SRC"
-fi
-if [ "$REQUIRE_ASSETS" = "1" ] && [ -z "$(ls "$APP/Contents/Resources"/*.h3m 2>/dev/null)" ]; then
-    echo "ERROR: no .h3m collected —— 地图资源缺失，拒绝打包（CI lite 版请设 REQUIRE_ASSETS=0）" >&2
-    exit 1
+BUNDLED_MISSING=0
+while IFS= read -r name; do
+    [ -z "$name" ] && continue
+    case "$name" in \#*) continue ;; esac
+    if [ -f "$MAP_SRC/$name" ]; then
+        cp "$MAP_SRC/$name" "$APP/Contents/Resources/"
+    elif [ -f "Resources/BundledMaps/$name.enc" ] && [ -n "${BUNDLED_MAPS_PASS:-}" ]; then
+        openssl enc -d -aes-256-cbc -pbkdf2 -in "Resources/BundledMaps/$name.enc" \
+            -out "$APP/Contents/Resources/$name" -pass env:BUNDLED_MAPS_PASS
+    else
+        echo "WARN: bundled map unavailable: $name（本地无 $MAP_SRC/$name，且无加密副本/密码）" >&2
+        BUNDLED_MISSING=$((BUNDLED_MISSING + 1))
+    fi
+done < scripts/bundled_maps.txt
+if [ "$REQUIRE_ASSETS" = "1" ]; then
+    [ "$BUNDLED_MISSING" = "0" ] || { echo "ERROR: $BUNDLED_MISSING 张内置地图缺失，拒绝打包（CI 请配置 Secret BUNDLED_MAPS_PASS）" >&2; exit 1; }
 fi
 
 # Web 地图查看器资源

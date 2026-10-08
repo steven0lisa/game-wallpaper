@@ -78,12 +78,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func loadMaps() {
-        let folder = mapsFolder
-        let urls = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.fileSizeKey])) ?? [])
+        // 优先级：用户指定的地图目录 > app 内置大地图（打包自包含的前提）> 开发机 vcmi 目录。
+        // 用户从未指定目录时直接用内置，不去探测默认目录。
+        if let saved = UserDefaults.standard.string(forKey: "mapsFolder"),
+           FileManager.default.fileExists(atPath: saved) {
+            let urls = Self.scanMaps(in: URL(fileURLWithPath: saved))
+            if !urls.isEmpty {
+                presenter?.setMaps(urls)
+                updateMenuTitle()
+                return
+            }
+        }
+        let bundled = Self.bundledScenes()
+        if !bundled.isEmpty {
+            presenter?.setMaps(bundled)
+        } else {
+            presenter?.setMaps(Self.scanMaps(in: mapsFolder))
+        }
+        updateMenuTitle()
+    }
+
+    private static func scanMaps(in folder: URL) -> [URL] {
+        ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.fileSizeKey])) ?? [])
             .filter { Self.sceneExtensions.contains($0.pathExtension.lowercased()) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
-        presenter?.setMaps(urls.isEmpty ? Self.bundledScenes() : urls)
-        updateMenuTitle()
     }
 
     static let sceneExtensions = Heroes3Engine.sceneExtensions

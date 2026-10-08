@@ -71,8 +71,9 @@ cd web && npm start   # http://localhost:8765/
 ## 版本与发布
 
 - 版本号格式 **`v<major>.<minor>`**（git tag，如 `v1.0`），tag 与 Release 一一对应。
-- push tag 后 GitHub Actions 自动：双架构构建 → 打包 dmg（无内置资源的 lite 版）→
-  生成更新说明（自上个 tag 以来的 feat/fix 分组）→ 发布 GitHub Release。
+- push tag 后 GitHub Actions 自动：双架构构建 → 打包 dmg（内置 3 张 XL 大地图，
+  加密副本解密；精灵资源仍需用户自备）→ 生成更新说明（自上个 tag 以来的
+  feat/fix 分组）→ 发布 GitHub Release。
   见 [.github/workflows/release.yml](.github/workflows/release.yml)。
 - 发版流程：
 

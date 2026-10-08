@@ -27,11 +27,13 @@ jobs:
             exit 1
           }
 
-      - name: Build universal app + dmg (lite, no game assets)
+      - name: Build universal app + dmg (bundled maps decrypted from secret)
         run: REQUIRE_ASSETS=0 ./scripts/build_app.sh
         env:
           MARKETING_VERSION: ${{ github.ref_name }}
           BUILD_NUMBER: ref-${{ github.ref_name }}
+          # 内置大地图加密副本的解密密码（无密码时打包降级为无地图 lite 版）
+          BUNDLED_MAPS_PASS: ${{ secrets.BUNDLED_MAPS_PASS }}
 
       - name: Generate release notes
         run: |
