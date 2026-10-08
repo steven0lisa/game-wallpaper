@@ -1,79 +1,100 @@
-# 环境与资产说明
+# Environment & Assets
 
-本项目运行/构建依赖的资产位置与获取方式。**原版游戏资源版权属 Ubisoft / New World
-Computing，仓库不包含、Git 历史也不包含**，需自备。
+English | [中文](zh-CN/environment.md)
+
+Where the assets this project needs to run/build live and how to obtain them.
+**Original game assets are copyrighted by Ubisoft / New World Computing; the
+repository — and its git history — contain none of them.** Bring your own.
 
 ---
 
-## 游戏资产（Heroes3 引擎必需，来自原版 HoMM3）
+## Game assets (required by the Heroes3 engine, from the original HoMM3)
 
-| 路径 | 用途 |
+| Path | Purpose |
 |---|---|
-| `<数据目录>/Data/H3sprite.lod` | **地图渲染唯一素材来源**：地形/河流/道路/边界/全部冒险物件 def（4013 条目，2565 def）；About 窗口的天使动画（cangel.def）、DIALGBOX、IOKAY32 也从这里导出 |
-| 同目录 `H3bitmap.lod` | PCX/界面素材。**构建期需要**：About 对话框内部纸底 `DIBOXBCK.PCX`、玩家色表 `PLAYERS.PAL`（暂未导出，见 formats.md §2.7/§2.8） |
-| `<数据目录>/Maps/*.h3m` | 地图。VCMI 自带 189 个 `.h3m`（RoE/AB/SoD） |
+| `<data dir>/Data/H3sprite.lod` | **The sole art source for map rendering**: terrain/rivers/roads/border/all adventure-map object defs (4013 entries, 2565 defs); the About-window angel animation (cangel.def), DIALGBOX and IOKAY32 are also exported from it |
+| `H3bitmap.lod` in the same dir | PCX/UI assets. **Needed at build time**: About-dialog paper background `DIBOXBCK.PCX`, player-color table `PLAYERS.PAL` (not yet exported, see formats.md §2.7/§2.8) |
+| `<data dir>/Maps/*.h3m` | Maps. VCMI ships 189 `.h3m` files (RoE/AB/SoD) |
 
-推荐通过 [VCMI](https://github.com/vcmi/vcmi) 安装获得上述文件（安装器会从原版游戏复制）。
+The easiest way to obtain these files is installing
+[VCMI](https://github.com/vcmi/vcmi) (its installer copies them from the
+original game).
 
-**运行时数据目录解析顺序**（`AppDelegate.dataDir` / `Heroes3Engine.defaultDataDir`）：
-1. 用户设置过的 `dataDir`（UserDefaults）；
-2. **app 内置资源** `GameWallpaper.app/Contents/Resources/Data/H3sprite.lod`
-   （本地打包时自动从 VCMI 目录拷入，自包含分发的前提）；
-3. `~/Library/Application Support/vcmi`（开发机兜底）。
+**Runtime data-dir resolution order** (`AppDelegate.dataDir` /
+`Heroes3Engine.defaultDataDir`):
+1. User-chosen `dataDir` (UserDefaults, via 「Choose Data Folder…」);
+2. **Bundled app resources** `GameWallpaper.app/Contents/Resources/Data/H3sprite.lod`
+   (copied in by `build_app.sh` on machines that have them — the self-contained
+   distribution prerequisite);
+3. `~/Library/Application Support/vcmi` (development fallback).
 
-**打包策略**：`scripts/build_app.sh` 默认要求本机有上述资源（缺失即报错拒绝出空包）；
-设 `REQUIRE_ASSETS=0` 时打包**无资源 lite 版**（CI 发布用），首次运行后由用户在
-菜单里指定资源目录与地图目录。
+**Bundled maps**: 3 XL maps listed in `scripts/bundled_maps.txt` are packed into
+the app. If no maps folder was set (「Choose Maps Folder…」), the bundled maps are
+loaded automatically. The map files are stored in the repo only as AES-encrypted
+copies (`Resources/BundledMaps/*.h3m.enc`); password = local
+`~/.config/gamewallpaper/bundled-maps-pass` = GitHub secret `BUNDLED_MAPS_PASS`.
+Plain-text maps, if present in a local VCMI `Maps` dir, are copied directly.
 
-## 参考代码库
+**Packaging policy**: `scripts/build_app.sh` requires local assets by default
+(missing assets abort the build rather than silently produce an empty package);
+with `REQUIRE_ASSETS=0` it packages without sprite assets (the CI release mode)
+— bundled maps are still decrypted in via the secret when available.
 
-| 路径 | 说明 |
+## Reference repositories
+
+| Path | Notes |
 |---|---|
-| [VCMI](https://github.com/vcmi/vcmi)（v1.7.3 checkout） | 格式与渲染语义的权威参考；关键文件：`lib/mapping/MapFormatH3M.cpp`、`lib/constants/EntityIdentifiers.h`（Obj 枚举）、`client/render/CDefFile.cpp`、`client/mapView/MapRenderer.cpp`、`config/terrains.json`/`rivers.json`（调色板动画区间） |
-| [IlyaPomaskin/h3lwp](https://github.com/IlyaPomaskin/h3lwp) | Android 版 Heroes 3 live wallpaper，本项目解析器/图层行为的基线（`base.apk` 即其构建产物，本地逆向参考用，不入库） |
+| [VCMI](https://github.com/vcmi/vcmi) (v1.7.3 checkout) | Authoritative reference for formats and rendering semantics; key files: `lib/mapping/MapFormatH3M.cpp`, `lib/constants/EntityIdentifiers.h` (Obj enum), `client/render/CDefFile.cpp`, `client/mapView/MapRenderer.cpp`, `config/terrains.json`/`rivers.json` (palette-animation ranges) |
+| [IlyaPomaskin/h3lwp](https://github.com/IlyaPomaskin/h3lwp) | Android Heroes 3 live wallpaper; baseline for this project's parsers/layer behavior (`base.apk` is its build artifact — local reverse-engineering reference only, never committed) |
 
-## 工具链
+## Toolchain
 
-- Xcode / SwiftPM（`Package.swift`，macOS 13+）；构建脚本 `scripts/build_app.sh`。
-- Node（web 版地图查看器，零依赖）：`cd web && npm start`。
-- 验证工具：jadx（APK 反编译，本地）、Python Pillow（差分比对）、Quartz（离屏窗口合成）、
-  `screencapture`。
+- Xcode / SwiftPM (`Package.swift`, macOS 13+); build script `scripts/build_app.sh`.
+- Node (web map viewer, zero dependencies): `cd web && npm start`.
+- Verification tools: jadx (APK decompilation, local), Python Pillow (pixel
+  diffing), Quartz (offscreen window compositing), `screencapture`.
 
-## 命令速查
+## Command cheatsheet
 
 ```bash
-./scripts/build_app.sh            # 构建 release 并打包 .app/.dmg（本机模式：内置 LOD + 地图 + About 资源）
-REQUIRE_ASSETS=0 ./scripts/build_app.sh   # lite 模式（无内置资源，CI 发布用）
-open build/GameWallpaper.app      # 启动壁纸（菜单栏 🎮）
+./scripts/build_app.sh            # release build + .app/.dmg packaging (local mode: bundles LOD + maps + About assets)
+REQUIRE_ASSETS=0 ./scripts/build_app.sh   # sprite-asset-free mode (CI release; bundled maps still decrypted via secret)
+open build/GameWallpaper.app      # launch the wallpaper (menu bar 🎮)
 
-# About 窗口无头验证：启动后 0.9s 自动弹出 About（配合 Quartz 枚举窗口 + screencapture -l<id> 截图）
+# Headless About-window verification: auto-opens About 0.9s after launch
+# (combine with Quartz window enumeration + screencapture -l<id>)
 open build/GameWallpaper.app --args --about
 
-# 手动重导 About 精灵（一般由 build_app.sh 调用；需 H3sprite.lod 同目录有 H3bitmap.lod）
+# Re-export About sprites manually (normally invoked by build_app.sh;
+# needs H3bitmap.lod next to H3sprite.lod)
 python3 scripts/export_about_assets.py \
     "$HOME/Library/Application Support/vcmi/Data/H3sprite.lod" \
     build/GameWallpaper.app/Contents/Resources/about
 
-# 无头渲染单帧（验证/调试）
+# Headless single-frame render (verification/debugging)
 .build/release/GameWallpaper --snapshot "<map.h3m>" --out out.png \
     [--data-dir <dir>] [--width W --height H] [--time-ms ms] [--zoom z] \
     [--center-x 0..1 --center-y 0..1] [--level 0|1]
 
-# 诊断探针
-.build/release/GameWallpaper --probe-def GRASTL.DEF          # def 结构/调色板
-.build/release/GameWallpaper --tile 6 1 --snapshot <map>     # 某格 h3m 数据
+# Diagnostic probes
+.build/release/GameWallpaper --probe-def GRASTL.DEF          # def structure/palette
+.build/release/GameWallpaper --tile 6 1 --snapshot <map>     # h3m data of one tile
 
-# 渲染对比基准（编辑器与游戏共用渲染器）
+# Rendering comparison baseline (editor and game share the renderer)
 /Applications/VCMI.app/Contents/MacOS/vcmieditor "<map.h3m>"
 ```
 
-## 版本号机制
+## Versioning
 
-- 发布版本 = **git tag `v<major>.<minor>`**（如 `v1.0`），push tag 触发 GitHub Actions
-  自动构建 dmg 并发布 Release（`.github/workflows/release.yml`）。
-- `CFBundleShortVersionString` = tag 去掉 `v`（如 `1.0`）；`CFBundleVersion` = 构建号
-  （commit 数 + short sha），由 build_app.sh 从 git 推导，本地可 `MARKETING_VERSION=`
-  / `BUILD_NUMBER=` 覆盖。About 窗口显示 `x.y-build`。
-- Release 说明由 workflow 从上个 tag 以来的 commit log 自动分组生成（feat/fix/other）。
-- i18n：`Resources/{en,zh-Hans}.lproj/Localizable.strings`，菜单/About 文案走
-  NSLocalizedString 跟随系统语言。
+- Release version = **git tag `v<major>.<minor>`** (e.g. `v1.0`); pushing a tag
+  triggers GitHub Actions to build the dmg and publish the Release
+  (`.github/workflows/release.yml`).
+- `CFBundleShortVersionString` = tag without the `v` (e.g. `1.0`);
+  `CFBundleVersion` = build number (commit count + short sha), derived from git
+  by build_app.sh; override locally with `MARKETING_VERSION=` / `BUILD_NUMBER=`.
+  The About window shows `x.y-build`.
+- Release notes are generated by the workflow from commits since the previous
+  tag, grouped as feat/fix/other.
+- i18n: `Resources/{en,zh-Hans}.lproj/Localizable.strings`; menu/About strings go
+  through NSLocalizedString and follow the system language. Documentation is
+  bilingual: English at `docs/`, Chinese mirror at `docs/zh-CN/`.

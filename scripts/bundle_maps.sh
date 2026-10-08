@@ -1,9 +1,10 @@
 #!/bin/bash
-# 维护内置大地图的加密副本：
-#   scripts/bundle_maps.sh encrypt   从 MAP_SRC（默认 vcmi Maps）重新加密清单地图 → Resources/BundledMaps/*.h3m.enc
-#   scripts/bundle_maps.sh decrypt <out_dir>   解密全部清单地图到指定目录（需 BUNDLED_MAPS_PASS 或 PASS_FILE）
-# 密码来源：BUNDLED_MAPS_PASS 环境变量，或 PASS_FILE（默认 ~/.config/gamewallpaper/bundled-maps-pass）
-# 明文 .h3m 永不入库（.gitignore）；加密副本可入库，密码只存在本地 PASS_FILE 与 GitHub Secret。
+# Maintains the encrypted copies of the bundled XL maps:
+#   scripts/bundle_maps.sh encrypt   re-encrypt the listed maps from MAP_SRC (default: vcmi Maps) -> Resources/BundledMaps/*.h3m.enc
+#   scripts/bundle_maps.sh decrypt <out_dir>   decrypt all listed maps into a directory (needs BUNDLED_MAPS_PASS or PASS_FILE)
+# Password source: the BUNDLED_MAPS_PASS env var, or PASS_FILE (default ~/.config/gamewallpaper/bundled-maps-pass).
+# Plain-text .h3m never enters the repo (.gitignore); encrypted copies may; the
+# password lives only in the local PASS_FILE and the GitHub secret.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

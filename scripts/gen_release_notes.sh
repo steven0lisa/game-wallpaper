@@ -1,6 +1,6 @@
 #!/bin/bash
-# 生成 release notes：从上个 tag（或仓库起点）到指定 tag 的 commit，按 feat/fix/other 分组。
-# 用法: scripts/gen_release_notes.sh v1.0
+# Generates release notes: commits from the previous tag (or repo start) to the
+# given tag, grouped as feat/fix/other. Usage: scripts/gen_release_notes.sh v1.0
 set -euo pipefail
 TAG="${1:?usage: gen_release_notes.sh <tag>}"
 PREV="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
@@ -27,10 +27,10 @@ echo "### 📦 Other"
 log | grep -vE '^- (feat|add|support|fix)' || echo "- (none)"
 echo
 echo "---"
-echo "ℹ️ dmg 内置 3 张 XL 大地图（未指定地图目录时自动加载）；精灵资源"
-echo "（H3sprite.lod，需自备原版游戏文件）不入库——首次运行请在菜单栏"
-echo "「Choose Data Folder…」指定游戏数据目录（如 VCMI 的目录）。"
-echo "未签名构建：若被 Gatekeeper 拦截，右键 → Open，或 \`xattr -d com.apple.quarantine /Applications/GameWallpaper.app\`。"
+echo "ℹ️ The dmg bundles 3 XL maps (auto-loaded when no maps folder is set). Sprite"
+echo "assets (H3sprite.lod, from your original game) are not included — on first"
+echo "launch use「Choose Data Folder…」to pick the game data dir (e.g. VCMI's)."
+echo "Unsigned build: if Gatekeeper blocks the first launch, right-click -> Open, or \`xattr -d com.apple.quarantine /Applications/GameWallpaper.app\`."
 if [ -n "$PREV" ]; then
     echo
     echo "**Full changelog**: https://github.com/${GITHUB_REPOSITORY:-steven0lisa/game-wallpaper}/compare/$PREV...$TAG"

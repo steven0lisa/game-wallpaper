@@ -2,14 +2,16 @@
 # Builds the release binary for both arm64 and x86_64, merges into a universal
 # (fat) binary via lipo, and packages GameWallpaper.app / .dmg
 #
-# 资源模式：
-#   REQUIRE_ASSETS=1（默认，本机开发）—— 内置 H3sprite.lod + 地图 + About 资源，
-#     缺资源直接失败，不允许静默出空包；
-#   REQUIRE_ASSETS=0（CI/发布 lite 版）—— 不内置任何版权资源，运行时用户在菜单里
-#     指定数据目录/地图目录（版权资源永不入库，见 .gitignore）。
+# Asset modes:
+#   REQUIRE_ASSETS=1 (default, local dev) — bundles H3sprite.lod + maps + About
+#     assets; missing assets abort the build, never a silent empty package.
+#   REQUIRE_ASSETS=0 (CI/release) — no copyrighted assets bundled; users pick the
+#     data dir / maps dir in the menu at runtime (assets never enter the repo,
+#     see .gitignore). Bundled XL maps are still decrypted via BUNDLED_MAPS_PASS.
 #
-# 版本号：默认从 git 推导——MARKETING_VERSION = 最新 tag（v 前缀去掉），
-# BUILD_NUMBER = <commit 数>.<short sha>；可用环境变量覆盖。
+# Versioning: derived from git by default — MARKETING_VERSION = latest tag
+# (without the v prefix), BUILD_NUMBER = <commit count>.<short sha>;
+# overridable via environment variables.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -20,7 +22,7 @@ swift build -c release --arch arm64
 echo "==> Building x86_64..."
 swift build -c release --arch x86_64
 
-# 两个架构各自产物
+# Per-architecture binaries
 ARM64_BIN=".build/arm64-apple-macosx/release/GameWallpaper"
 X86_BIN=".build/x86_64-apple-macosx/release/GameWallpaper"
 [ -f "$ARM64_BIN" ] || { echo "missing $ARM64_BIN" >&2; exit 1; }
@@ -37,23 +39,25 @@ echo "==> Merging into universal binary..."
 file "$APP/Contents/MacOS/GameWallpaper"
 "$LIPO" -info "$APP/Contents/MacOS/GameWallpaper"
 
-# 内置渲染必需的 H3sprite.lod（地形/物件全部精灵，~65MB）——自包含分发的前提。
-# 运行时解析顺序见 AppDelegate.dataDir / Heroes3Engine.defaultDataDir：
-#   用户设置 dataDir > bundle Resources/Data/H3sprite.lod > ~/Library/Application Support/vcmi
+# Bundles the render-required H3sprite.lod (all terrain/object sprites, ~65MB)
+# — the prerequisite for self-contained distribution. Runtime resolution order
+# (AppDelegate.dataDir / Heroes3Engine.defaultDataDir):
+#   user-set dataDir > bundle Resources/Data/H3sprite.lod > ~/Library/Application Support/vcmi
 LOD="${LOD:-$HOME/Library/Application Support/vcmi/Data/H3sprite.lod}"
 if [ -f "$LOD" ]; then
     mkdir -p "$APP/Contents/Resources/Data"
     cp "$LOD" "$APP/Contents/Resources/Data/H3sprite.lod"
 elif [ "$REQUIRE_ASSETS" = "1" ]; then
-    echo "ERROR: no H3sprite.lod at $LOD —— 渲染必需资源缺失，拒绝打包（CI lite 版请设 REQUIRE_ASSETS=0）" >&2
+    echo "ERROR: no H3sprite.lod at $LOD — required asset missing, aborting (set REQUIRE_ASSETS=0 for a sprite-free CI build)" >&2
     exit 1
 else
-    echo "WARN: REQUIRE_ASSETS=0 —— 打包无资源 lite 版，运行时需用户指定数据目录" >&2
+    echo "WARN: REQUIRE_ASSETS=0 — packaging without sprite assets; users pick the data dir at runtime" >&2
 fi
 
-# 内置大地图：scripts/bundled_maps.txt 固定 3 张 XL（见清单）。
-# 来源优先级：本机 MAP_SRC 明文 > 仓库加密副本解密（需 BUNDLED_MAPS_PASS，CI 走 GitHub Secret）。
-# 都拿不到时：REQUIRE_ASSETS=1 报错拒绝出包；=0 则 WARN 出无地图包。
+# Bundled XL maps: the fixed list in scripts/bundled_maps.txt.
+# Source priority: plain text from local MAP_SRC > decrypt the in-repo encrypted
+# copy (needs BUNDLED_MAPS_PASS; CI gets it from a GitHub secret).
+# If neither is available: REQUIRE_ASSETS=1 aborts; =0 warns and ships mapless.
 MAP_SRC="${MAP_SRC:-$HOME/Library/Application Support/vcmi/Maps}"
 BUNDLED_MISSING=0
 while IFS= read -r name; do
@@ -65,34 +69,35 @@ while IFS= read -r name; do
         openssl enc -d -aes-256-cbc -pbkdf2 -in "Resources/BundledMaps/$name.enc" \
             -out "$APP/Contents/Resources/$name" -pass env:BUNDLED_MAPS_PASS
     else
-        echo "WARN: bundled map unavailable: $name（本地无 $MAP_SRC/$name，且无加密副本/密码）" >&2
+        echo "WARN: bundled map unavailable: $name (not in $MAP_SRC and no encrypted copy/password)" >&2
         BUNDLED_MISSING=$((BUNDLED_MISSING + 1))
     fi
 done < scripts/bundled_maps.txt
 if [ "$REQUIRE_ASSETS" = "1" ]; then
-    [ "$BUNDLED_MISSING" = "0" ] || { echo "ERROR: $BUNDLED_MISSING 张内置地图缺失，拒绝打包（CI 请配置 Secret BUNDLED_MAPS_PASS）" >&2; exit 1; }
+    [ "$BUNDLED_MISSING" = "0" ] || { echo "ERROR: $BUNDLED_MISSING bundled map(s) missing, aborting (configure the BUNDLED_MAPS_PASS secret for CI)" >&2; exit 1; }
 fi
 
-# Web 地图查看器资源
+# Web map viewer resources
 mkdir -p "$APP/Contents/Resources/webviewer"
 cp web/public/index.html web/public/viewer.js "$APP/Contents/Resources/webviewer/"
 
-# About 窗口资源（英雄无敌3 风格）：天使 Logo 动画 + DIALGBOX 边框 + IOKAY32 按钮。
-# 从 H3sprite.lod/H3bitmap.lod 导出 PNG，打包进 app，使 About 在任何机器都能显示。
+# About-window assets (Heroes-3 style): angel logo animation + DIALGBOX border
+# + IOKAY32 button, exported to PNG from H3sprite.lod/H3bitmap.lod so the About
+# window renders on any machine.
 if [ -f "$LOD" ]; then
     mkdir -p "$APP/Contents/Resources/about"
     python3 scripts/export_about_assets.py "$LOD" "$APP/Contents/Resources/about"
 else
-    echo "WARN: no H3sprite.lod, About 窗口将退化为纯文本样式"
+    echo "WARN: no H3sprite.lod — About window falls back to plain text style"
 fi
 
-# i18n 本地化（跟随系统语言中/英）
+# i18n localization (en / zh-Hans, follows the system language)
 for lproj in en zh-Hans; do
     mkdir -p "$APP/Contents/Resources/$lproj.lproj"
     cp "Resources/$lproj.lproj/Localizable.strings" "$APP/Contents/Resources/$lproj.lproj/" 2>/dev/null || true
 done
 
-# 版本号：tag v{major}.{minor} → CFBundleShortVersionString；构建号 = <commit 数>.<sha>
+# Version: tag v{major}.{minor} -> CFBundleShortVersionString; build number = <commit count>.<sha>
 if [ -z "${MARKETING_VERSION:-}" ]; then
     TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
     MARKETING_VERSION="${TAG#v}"
@@ -145,7 +150,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# 补齐 Finder/LaunchServices 需要的最小资源（version.plist 用真实 build 号）
+# Minimal resources Finder/LaunchServices expect (version.plist with the real build number)
 python3 - "$APP" "$MARKETING_VERSION" "$BUILD_NUMBER" <<'PY'
 import os, plistlib, sys
 app, mark, build = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -156,12 +161,12 @@ ver = {
 }
 with open(os.path.join(app, "Contents", "version.plist"), "wb") as f:
     plistlib.dump(ver, f)
-# 创建 PkgInfo —— 老一代 launchservices 会看它
+# PkgInfo — older launchservices look for it
 with open(os.path.join(app, "Contents", "PkgInfo"), "w") as f:
     f.write("APPL????")
 PY
 
-# 仅本地运行在 arm64 或 x86_64 上时可能被 Gatekeeper 拦截（未签名），本地测试用 xattr 放行
+# Unsigned builds may be blocked by Gatekeeper; drop quarantine for local testing
 xattr -d com.apple.quarantine "$APP" 2>/dev/null || true
 
 echo "==> Packaging ${APP%.app}.dmg ..."

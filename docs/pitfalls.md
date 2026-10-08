@@ -1,364 +1,355 @@
-# 开发过程踩坑记录
+English | [中文](zh-CN/pitfalls.md)
 
-按时间顺序记录本项目实现过程中遇到的问题、定位方法与结论。
-每条都已修复并验证；写下来避免重蹈。
+# Development Pitfalls Log
+
+A chronological record of the problems encountered while implementing this project, how each was diagnosed, and the conclusions reached.
+Every entry has been fixed and verified; written down to avoid repeating them.
 
 ---
 
-## 1. DEF 块头 unknown 字段长度（最隐蔽）
-
-**现象**：所有物件渲染正确，但地形帧整体"错一格"——(x,y) 格画出了邻格的内容，
-部分格子颜色错乱。
-**定位**：十六进制 dump GRASTL.DEF，手工算偏移表的两个候选位置：
-unknown=8 时 79 个帧偏移全部有效；unknown=12 时偏移表整体左移一帧。
-**结论**：块头 unknown 是 **8 字节**（VCMI 源码注释 "8 unknown bytes - skipping" 为准；
-jadx 反编译的 Def.java 数据类声明误导）。
-
-## 2. 阴影索引的品红占位色
-
-**现象**：物件下方/周围出现品红（255,0,255 系）斑块，编辑器里同位置是深色阴影。
-**定位**：提取品红像素颜色 → 查 def 调色板 → 1/4/6/7 号索引正是品红占位色。
-**结论**：渲染时强制映射为半透明黑（VCMI ScalableImage 语义），见 formats.md §2.5。
-
-## 3. 地形 def 名与 lod 条目名不匹配
-
-**现象**：物件全对，地形全黑（terrainHit=0/1296）。
-**定位**：日志显示 missingDefs 非空；发现渲染键是裸名 "GRASTL"，lod 条目是 "GRASTL.DEF"。
-**结论**：AssetLibrary 查找时给不含 `.` 的键补 `.DEF` 后缀（大小写不敏感）。
-
-## 4. 边界帧索引的负数取模与判断顺序
-
-**现象**：地图四角金框断裂、(-2,-1) 等格子画错。
-**定位**：对照 VCMI getIndexForTile 源码：先判"图外远处"，再判边缘；且 Swift `%`
-对负数保留符号（-2 % 4 = -2），帧号变负。
-**结论**：调整判断顺序 + `abs()`，见 formats.md §5。
-
-## 5. 损坏 def 导致的 OOM / 死循环
-
-**现象**：`--snapshot` 偶发 `failed to allocate 1.5e16 bytes`（OOM）或 99% CPU 卡死。
-**定位**：lldb + sample 采样：DefFile.init 在 offsets 循环里；根因是上游解压失败
-产生垃圾数据 → framesCount 解析成天文数字。
-**结论**：三层防御——groupsCount ≤ 64、framesCount ≤ 100k、帧尺寸 1..4096；
-legacy 探测的"逐帧复制整个字节流"改为 O(1) 直接索引读（原来是 O(N²) 卡死根源）。
-
-## 6. MTKView 不自动 present（macOS 桌面层窗口）
-
-**现象**：GUI 模式窗口全黑，但渲染循环正常（draw 计数增长、CPU 占用正常）。
-**定位**：红屏测试（clearColor 改纯红）仍黑 → 排除绘制内容问题，锁定 drawable
-未提交到窗口表面。
-**结论**：`draw(in:)` 返回前显式 `view.currentDrawable?.present()`。
-这是 MTKView 在特定配置（无 CAMetalLayer delegate 干预 + 桌面层窗口）下的行为，
-加显式 present 后一切正常。
-**注意**：`screencapture -l<winid>` 对被遮挡的 Metal 窗口拿不到内容（黑图），
-需用 Quartz `CGWindowListCreateImage` 离屏合成，或临时把窗口提到 floating 层
-（本仓库保留 `--level-floating` 启动参数作验证辅助）。
-
-## 7. 被遮挡窗口的截屏验证方法论
-
-桌面壁纸天然被所有应用窗口遮挡，验证链路：
-1. **无头 CLI 渲染**（`--snapshot`）验证渲染正确性——与编辑器画布逐格比对；
-2. **Quartz 离屏合成**（`CGWindowListCreateImage` + `kCGWindowListOptionIncludingWindow`）
-   验证真实窗口位图内容；
-3. **半透明菜单栏截屏**：菜单栏区域是系统强制半透明的，截图里能透出壁纸，
-   作为"壁纸真实在桌面层显示"的最终证据；
-4. `--level-floating` 临时提层直接目视（验证后关闭）。
-
-## 8. 浏览器缓存的旧图集导致"地图边缘异常"（Web 版）
-
-**现象**：用户反馈 Web 版地图边缘（图外区域）出现深绿植被+金色斑块纹理，L 形金框外不是暗岩。
-**定位**：无痕模式（禁用缓存）渲染同一视角完全正确，与 Swift 版像素级一致（diff 4.45）；
-且 EDG 0-15 帧经解码验证是纯岩石灰黑系（无绿色像素、无高饱和黄），不可能产生用户看到的纹理。
-根因是开发过程中图集生成逻辑变更后，浏览器仍持有旧版 atlas PNG 的缓存
-（当时设置了 max-age=3600）。
-**修复**：图集 URL 带内容指纹 `/atlas/<map>/level<L>-<mtime>-<帧数>-<对象数>/atlas-N.png`，
-缓存头改为 `immutable, max-age=31536000`——内容变化时 URL 必然变化，永不使用过期图集；
-服务器端按指纹分目录，旧目录仅占磁盘不影响正确性。
-**教训**：对"由构建流程生成的静态资产"必须用内容寻址（content-addressed）URL，
-开发期尤其如此；否则任何生成端修复都会被浏览器缓存"回滚"。
-
-## 9. 道路"接驳处断裂"——遍历对象搞错（道路下半丢失）
-
-**现象**：道路在向下终止的格子处少画半格，视觉上路断在格边；连接处不连贯。
-**定位**：与 VCMI `MapRendererRoad::renderTile` 逐行对照发现遍历语义差异：
-VCMI 对视口内**每个格子**渲染（本格无路但上格有路 → 仍画上格道路图下半），
-我的实现只遍历有路的格子 → "上格有路、本格无路"的格子漏画。
-Viking 地图 601 格受影响，158 张地图共 20602 格。
-**修复**：道路层改为视口 tile 双循环（Swift `Renderer.swift` / JS `viewer.js` 同步修改）。
-**教训**：移植渲染循环时，"渲染哪些 tile"与"绘制什么"同样重要；
-VCMI 的 per-tile renderTile 模型意味着每个子渲染器都要对全 tile 生效，
-只在数据存在时跳过绘制，而不是用数据存在性驱动遍历。
-
-## 10. 图集 immutable 缓存"中毒"（Web，最隐蔽）
-
-**现象**：修复图集生成逻辑后，开发者验证通过（无痕/清缓存），但用户浏览器里
-"依然没修复"——地图一半区域渲染成错误内容（地形错位成暗色）。
-**根因链**：图集 URL 只含 `地图mtime-帧数-对象数`。生成代码变更后，同一地图的
-帧数/对象数可能恰好不变 → URL 不变 → 而图集响应头是
-`Cache-Control: public, max-age=31536000, immutable` → 浏览器【永久】复用旧图集。
-场景 JSON（无缓存头）是新的、图集是旧的 → 帧坐标指向旧图集的错误内容。
-**修复**：atlasVersion 追加【服务端代码指纹】（Scene/DefFile/H3m/Lod/Reader/Server
-的 mtime+size 的 md5 前 8 位）——代码一变 URL 必变，缓存自动失效。
-**教训**：内容寻址 URL 的"内容"必须涵盖**所有影响产物的输入**（数据 + 代码），
-否则 immutable 缓存会把修复"回滚"。验证时务必用无痕窗口 + 服务器端内容抽查双保险。
-
-## 11. headless Chrome 截图抓不到固定尺寸 canvas（验证工具坑）
-
-**现象**：给 canvas 设置固定 CSS 尺寸（`&win=WxH` 自动化对比模式）后，
-`--screenshot` 截图中 canvas 区域显示暗色残影，但页面实际渲染正确。
-**定位**：在页面里 `canvas.toDataURL()` POST 回服务器（canvas dump）对比——
-canvas 内容完全正确（diff 5.25 vs Swift），证明是截图管线问题而非渲染问题
-（virtual-time 下固定尺寸 canvas 的呈现时机与截图不同步）。
-**教训**：headless 截图与页面真实渲染可能不一致；自动化验证 canvas 内容
-优先用 `toDataURL` 回传，截图只作为辅助；固定视口模式仅用于精确对齐计算。
-
-## 12. 道路骑在格线上——帧 margin 的画布语义
-
-**现象**：道路整体错位半格、贴图被拉伸，路面骑在两行格子中间，与地形网格对不齐。
-**定位**：dump DIRTRD.DEF 帧结构发现画布 32×32 但数据带 margin（横向路 32×14@margin(0,9)、
-纵向路 14×32@margin(9,0)）。我实现半格裁剪时把 VCMI 的 `Rect(0,16,32,16)` 当成了
-**数据坐标**（裁数据下半 32×7 + 拉伸），而它是**画布坐标**（画布下半与数据的交集）。
-**修复**：新增画布裁剪（求交）——画布矩形先按翻转位镜像，与数据矩形 [ox,oy,w,h] 求交，
-交区 UV 直接取图集，屏幕位置 = 格原点 + 裁剪区原点 + 交区在裁剪区内的偏移。
-Swift `Renderer.canvasCrop` / JS `viewer.drawFrameCanvas`，双端验证道路行分布偏移 0px。
-**教训**：def 帧的 fullWidth/fullHeight 与数据 width/height 不等时（道路全部如此），
-任何裁剪/定位都必须在画布坐标系里做；VCMI 所有 `Rect` 参数都是画布坐标。
-
-## 13. h3m 解析的字节对账方法
-
-h3m 格式段多且版本相关，解析走偏的定位手段是**检查点字节偏移**：
-在 header/terrain/defs/objects 各段结束处记录 `reader.pos`，与文件总长比对。
-- terrain 段结束位置 = 1296 格 × 7 字节（36×36 图），可直接验算；
-- objects 段结束位置 ≈ 文件尾（后面只剩 events 等小段）。
-任何一段算出来的"下一字节"与实际内容对不上（例如 defs 段开头不是合理的 defCount），
-即可定位到具体对象类型的 payload 跳读错误。本项目曾用此法发现 victory condition
-case 3 少跳了 1 字节（应为 5 字节：3 坐标 + 2 参数）。
-
-## 14. extTileFlags 翻转位：bit0=左右镜像（VCMI 命名按"轴"不按"方向"）
-
-**现象**：海岸线出现方块状错接（水格过渡帧方向错），道路拐角/斜向段断裂成悬空短条。
-用户观察"贴图旋转 90°/180° 就能匹配"——实际是镜像用反：对 45° 斜向帧，H/V 镜像
-用反的效果近似"转了 90°"。
-
-**定位**：VCMI `MapTileStorage::load`（MapRenderer.cpp）把同一 def 加载 4 份槽位：
-槽 1 调 `verticalFlip()`、槽 2 调 `horizontalFlip()`、槽 3 双翻转；渲染时
-`rotationIndex = extTileFlags % 4`（terrain）/`>>2`（river）/`>>4`（road）直接当槽位号。
-望文生义会读成"bit0=上下翻转"，但 VCMI 的 `verticalFlip()` 是**绕竖直轴翻转=左右镜像**。
-实证方法：取一格（如 Viking 图 tile(94,28) dir=5 flags=0x2），穷举 16 帧 × 4 翻转
-与 vcmieditor 同格像素比对，唯一 0.0 误差组合 = frame5 + 上下镜像 ⇒ bit1=上下镜像，
-bit0=左右镜像（与地形/河流/道路三层一致，均经编辑器像素级验证归零）。
-
-**修复**：`flipH = bits & 1`、`flipV = bits & 2`（三层相同）。
-
-**教训**：开源代码的函数名是"抄作业"的第一手语义，但命名可能按轴/按方向各有理解，
-涉及几何方向时务必用真实地图格做像素级穷举对账，一次定案。
-
-## 15. 带翻转的子矩形裁剪必须"先翻转、后裁剪"
-
-**现象**：翻转位语义改对后，直路完全正常，但斜向/拐角路仍断裂成两截错位短条。
-
-**定位**：VCMI 的顺序是——`MapTileStorage::load` 先把**整张帧镜像**进 4 个槽位，
-`MapRendererRoad::renderTile` 再对**已翻转的图**做普通 `Rect(0,16,32,16)` 裁剪。
-我们的 `canvasCrop`/`drawFrameCanvas` 却是"镜像画布矩形 + 采样未翻转数据"：
-镜像矩形后与数据求交，采样坐标却没跟着镜像，也没做像素镜像。直路条带左右对称
-（14px 居中）侥幸不错位；斜向条带（22×22@(10,10)）镜像后换象限，立刻断裂。
-
-**修复**：按 VCMI 顺序重写——把**数据矩形**镜像进翻转画布空间求交（交区坐标即屏幕
-坐标），采样未翻转图集数据后：Metal 用 shader flags 在 quad 内镜像 UV（canvasCrop
-返回 flags，替换原来写死的 0）；Canvas2D 用 `translate+scale(-1,1)` 包住 drawImage。
-修完与编辑器同格 0.0 误差。
-
-**教训**：`先翻转后裁剪`与`先裁剪后翻转`对**整帧**等价，对**子矩形**不等价
-（矩形镜像后与数据的相对位置变了）。抄 VCMI 作业要抄完整条流水线，不能只抄裁剪公式。
-
-## 16. 屏幕级验证的三种测量污染（差分/模板匹配）
-
-给动态壁纸做"画面是否缓慢移动"的自动验证时，接连踩了三种坑：
-1. **`screencapture` 截的是整个屏幕**——前台的 IDE/编辑器窗口一起进画面，测的位移
-   其实是前台窗口（静态 UI → 相位相关恒 0.00 且 response 0.999，极具迷惑性）。
-   必须用 `CGWindowListCreateImage` 按窗口 ID 截目标窗口本身。
-2. **像素画的模板匹配伪峰**——草地纹理周期重复、地图上大量同贴图城堡，400px 模板
-   能在 100~200px 偏移处拿到 score≈1.0 的"刚性位移"假象，且各次测量互相矛盾。
-   锚点必须选**孤立且独特**的结构（如雪山城堡群、竞技场），并要求多点一致。
-3. **对齐方向/符号反复出错**：np.roll 的 shift 语义与"内容位移"方向相反，先小图
-   画箭头推一遍再用。最终闭环：日志输出 viewLeft/viewTop，截图前后各读一行，
-   按日志增量 × effZoom 对齐两帧，残差应只剩水/物件动画。
-
-## 17. Metal 单实例缓冲被下一帧覆盖 → 偶发一帧错误贴图（闪烁）
-
-**现象**：壁纸偶发小面积闪烁/白杠（截到一次：路面上缘凭空一条白色横杠），闪一下即恢复，
-位置不定。用户描述"像刷新过程里的贴图错误"。
-
-**定位**：`Renderer` 只有一个 12.8MB 的 `instanceBuffer`（storageModeShared）+
-`uniformBuffer`，每帧 CPU `memcpy` 覆盖，随后 `draw(wait:false)` 提交**不等 GPU**。
-整幅地图几万实例 + 过度绘制时，GPU 执行一帧可能超过 16.7ms——下一帧的 memcpy 会在
-GPU 仍在读缓冲时覆盖它，GPU 读到**新旧混合的撕裂数据**：某个 quad 的位置/UV 是旧帧
-前半 + 新帧后半，于是把图集里别处的白色纹素画到了路面上，持续一帧。
-
-**修复**：Apple 标准的三缓冲环 + 信号量背压——`instanceBuffers/uniformBuffers` 各 3 份，
-`DispatchSemaphore(value:3)` 在 draw() 开头 wait、命令缓冲 `addCompletedHandler` 里
-signal；slot 只有在其命令缓冲完成后才会被复用。构建（buildFrame）只填 CPU 侧数组与
-pendingUniforms，memcpy 移到 draw() 选定 slot 之后。同视角双次渲染 diff 应为 0
-（差异仅来自随机物件具象化的 randomElement，见 GameMap）。
-
-**教训**：`waitUntilCompleted` 缺省（异步提交）时，CPU 侧每帧覆写的 shared buffer
-都必须按"帧在飞"分组复用；这类竞态的症状是**低概率单帧伪影**，截图/录屏都难抓，
-要靠审查"谁在 GPU 还没读完时就写"来定位。
-
-## 18. 线性采样必须配预乘 alpha，否则所有精灵出现淡描边
-
-**现象**：为平滑滚动启用 GPU 线性采样后，怪物/建筑/道路周围出现一圈淡暗描边
-（正式游戏没有）。用户截图可复现。
-
-**定位**：图集按**直通 alpha（straight alpha）**存储（RGB 不预乘），线性采样在
-精灵不透明边缘与透明邻居（RGB=0, A=0）之间插值，得到 RGB 减半、A 减半的过渡像素；
-再经 sourceAlpha 混合后，过渡像素比两侧都暗 → 每个精灵边缘一圈暗晕。
-缩放 ≥2 时每个精灵边缘必然落在像素中间，描边恒定可见。
-
-**修复**：图集写入时预乘（RGB×A/255），混合模式改为
-`sourceRGB = ONE, destRGB = ONE_MINUS_SRC_ALPHA`（预乘合成标准式）。
-黑色阴影像素（A=64/128, RGB=0）预乘后不变，视觉无回归。
-Web 导出的 PNG 需要反预乘回直通 alpha（本项目图集阴影全黑，视觉无差）。
-
-**教训**：启用纹理线性过滤的那一刻就要决定 alpha 预乘策略；"混色出暗边"是
-非预乘 + 线性过滤的标志性伪影。
-
-## 21. h3m 头解析：size 字段偏移不是 0
-
-**现象**：用 `struct.unpack("<iiI", raw)` 读 h3m 头（version, ?, size）时，得到的 size
-是一两百万的荒唐值（远超过 h3m 实际地图边长 36~144），导致分组/排序全部错乱。
-
-**定位**：对照 Swift `H3mFile.swift` —— 头是 i32 version, **i8** hasPlayers, i32 size, i8 hasUnder。
-Python 用 `struct.unpack_from("<i", raw, 5)` 才对（i32 从偏移 5 开始读，越过 hasPlayers 字节）。
-
-## 22. About 对话框青色网格——色键未透明 + 误把 box[8] 当内部背景（双根因）
-
-**现象**：About 窗口对话框内部被青色 (0,255,255) 网格铺满；而原版 heroes3
-对话框应是棕色纸底 + 蓝色雕花边框。用户截图直出。
-
-**定位**（逐帧统计 + 对照 VCMI 源码三个文件）：
-- 逐帧统计 DIALGBOX 11 帧：box[0..3] 青色占 59%、box[8] 占 58%、box[4..7] 为 0%
-  → 青色集中在"边框外侧与框内"两处。
-- `CBitmapHandler`/`CDefFile`：**青色 = DEF 调色板 index 0 的颜色**（DIALGBOX 的
-  palette[0] 就是纯青），即色键；VCMI 以 `EImageBlitMode::COLORKEY` 加载使 idx0
-  全透明。导出脚本的 `colorKey` 分支压根没实现（只有 shadows 语义），色键像素
-  被画成不透明青色——这是"为什么青色可见"。
-- `CMessage::drawBorder`（client/windows/CMessage.cpp）：**只画 box[0..7]**（四角
-  box[0..3] + 四边 box[4/5] 左右 14×64、box[6/7] 上下 64×15），box[8..10] 不参与；
-  `CInfoWindow` 的内部背景是 `CFilledTexture("DiBoxBck")`（InfoWindows.cpp），
-  `showAll` 平铺 **DIBOXBCK.PCX** 棕纸纹理。把 box[8] 当"9-slice 内部"平铺是
-  第一个想当然——box[8] 内部 58% 是色键，平铺必然出网格——这是"为什么铺满内部"。
-
-**修复**：`frame_to_rgba` 补 `colorKey` 分支（idx0 → alpha 0）；新增 H3 式 PCX
-解码（formats.md §2.8）从 H3bitmap.lod 导出 `background.png`；`Heroes3BorderView`
-改为 background 平铺 + 只画 box[0..7]。截图复验棕底蓝框正常。
-
-**教训**：
-1. **占位色有两种**——品红系 (255,0,255) 是 index 1/4/6/7 阴影位，青色 (0,255,255)
-   是 index 0 色键；UI 精灵（COLORKEY 模式）与物件精灵（WITH_SHADOW 模式）的
-   透明语义不同，导出工具必须按精灵类型分支。
-2. "9-slice"是想象，VCMI 的 `drawBorder` 用"4 角 + 4 边"拼框、内部另铺一张
-   纹理；抄 UI 布局前先读渲染函数本体，别按通用图形学套路套。
-3. 大面积"诡异纯色"出现时，第一时间反查调色板索引分布（哪个 index、占比多少），
-   比"改代码试试"快得多。
-
-## 23. PNG 导出黑图——每扫描行缺 filter byte（write_png）
-
-**现象**：导出的 about PNG 被 PIL 报 `OSError: unrecognized data stream contents`
-，NSImage 解码失败，About 窗口整体黑/空白。
-**定位**：手写 PNG 的 IDAT 直接放了 RGBA 原始数据。PNG 规范要求**每个扫描行
-前有一个 filter-type 字节**（0x00=None 即可），缺失即整流非法。
-**修复**：逐行 `append(0)` 后再拼该行 RGBA；`zlib.compress(..., 9)`。
-**教训**：手写 PNG 编码器时 filter byte 是最易漏的一环；漏掉的症状是
-"解码器直接拒绝"而不是"图错"，用 PIL `Image.open(...).load()` 做导出自检
-（顺带统计非透明像素数）能在打包前拦住。
-
-## 24. NSWindow 内容约束崩溃——子视图未 addSubview 就进 NSLayoutConstraint
-
-**现象**：`--about` 启动即崩、窗口不出现；直接跑二进制见
-`NSGenericException: unable to satisfy constraints ... because they have no
-common ancestor`。
-**定位**：`logoView` 只被引用了约束（`logoView.centerXAnchor == centerXAnchor`），
-漏了 `addSubview(logoView)`——无公共祖先的约束对在 activate 时抛异常。
-**修复**：约束激活前补 `addSubview`（labels 循环里本来就有，唯独 logo 漏了）。
-**教训**：AppKit 没有像 SwiftUI 那样的"声明即挂载"；NSView 层级是命令式累积的，
-新控件先 addSubview 再上约束。LSUIElement 应用的崩溃日志不进 Console.app 的
-常规位置，直接命令行跑二进制看 stderr 最快。
-
-## 25. About 边框"边角不对"——边框画在窗口坐标而非外扩矩形，且窗口未按 64px 网格
-
-**现象**：四角金饰方向正确但整圈边框与窗口边缘之间露出一环兜底色（看起来"边框
-没贴合窗口"）；此前一版还出现过顶边/侧边衔接处的白块断带。
-**根因**（两层）：
-1. VCMI BORDERED 的边框画布是内容区**外扩** 左右 14 / 上下 15 的矩形
-   （`CWindowObject::showAll`：`drawBorder(to, w+28, h+29, x-14, y-15)`）。
-   首版把边框以"内容区相对坐标"画，`drawSDL` 的 y 换算里水平边漏加背景原点、
-   后一版又整体内缩——两个方向都错，唯一直观结果是"边框与窗口边缘不重合"。
-2. 窗口 508×409（内容 480×380 + 28/29）不是 64px 网格：上下边步进 64px 只能铺
-   `(508-128)/64 = 5.9375` 条，末段覆盖不到 → 边框带内出现透明缝隙，borderless
-   窗口直接露白。
-**修复**：
-- 边框以**整窗为画布**（不再做内容区相对换算），SDL 顶左坐标 → NSView 底左：
-  `nsY = winH - sdlY - frameH`；窗口尺寸取 **512×448（128+64k 网格）**，上下边
-  恰好 6 条、左右 5 条、四角各一，零裁切零缝隙，也不再需要 VCMI 的 +1 补缝。
-- 整窗先铺一层取自 DIBOXBCK 的深棕兜底色，再平铺内容区背景、最后叠边框——
-  贴图透明像素（色键）处不再露窗口白底。
-- 贴图 draw 必须用 `.sourceOver`：`.copy` 会把色键透明像素按位替换打穿成洞
-  （与 pitfalls #22 同源，但这里表现是"白块/底色透出"而非青色）。
-**教训**：还原 VCMI 布局先读 `CWindowObject::showAll` 而不是只看 `CMessage::drawBorder`
-——**调用方传入的矩形才是真相**；边框贴图步进 64px 决定了窗口尺寸应该向 64px
-网格对齐，任意尺寸只会逼出补缝逻辑。
-
-## 26. dmg 只有 2MB——LOD 从未内置，渲染依赖开发机的 vcmi 目录
-
-**现象**：dmg 仅 2MB。用户指出"要内置 lod 和地图"。
-**根因**：`build_app.sh` 只打了 20 张小地图（1MB）+ About PNG；`AppDelegate.dataDir`
-与 `main.defaultDataDir` 写死 `~/Library/Application Support/vcmi/Data/H3sprite.lod`
-——本机能跑只因开发机装了 VCMI，换机器直接 `library FAILED` 黑屏。
-**修复**：
-- `build_app.sh` 把 `H3sprite.lod`（62MB，地形/物件全部精灵）拷进
-  `Resources/Data/`；缺失时报错拒绝打包（地图目录同理）。
-- `dataDir`/`defaultDataDir` 加内置优先回退链：UserDefaults dataDir >
-  **bundle Resources/Data/H3sprite.lod** > `~/Library/.../vcmi`。
-- `pick_maps.py` 限额参数支持字节（`80MB`）与张数两种写法；地图全量 XL/L
-  去重拷贝（38 张 3MB）。
-**教训**：打包产物体积异常小就是资源没进包的强信号；自包含分发必须验证
-"清空 UserDefaults 后仍能渲染"（模拟无 vcmi 的目标机），仅本机跑通不算数。
-
-## 27. 壁纸内存持续上涨（245→412MB）——DefFile 缓存与 viewer 场景缓存只进不出
-
-**现象**：运行 4 小时 footprint 从 245MB 涨到 412MB，`sample` 显示全部线程空闲
-（不是 CPU 热点），即"换图时增量、不回落"的累积而非运行时泄漏。
-**根因**（换图周期 15 分钟，+10MB/张 与 4 小时增量吻合）：
-1. **`AssetLibrary.cache` 只进不出**（主因）：`AtlasBuilder.build` 把每张图用到的
-   全部 DEF（解压后的帧数据）塞进缓存，换图后不淘汰。def 数据只在构建 atlas
-   （烘焙进 2048×2048 像素图集）期间需要，烘焙完即死重。
-2. **`MapWebServer.cachedScene` 换图不失效**：持有整份图集页 RGBA 拷贝
-   （每页 16MB），旧地图的副本驻留到下次 viewer 请求或闲置 30 分钟退出。
-**修复**：
-- `AtlasBuilder.build` 末尾 `library.purgeDefCache()`——atlas 烘焙完即清；
-  并发重建时 `def()` 会自动重读 lod，只是重复解压，无正确性问题。
-- `MapPresenter.onMapChanged` 回调（AppDelegate 装配到
-  `webServer.invalidateSceneCache()`），换图即作废旧场景副本。
-- `MapPresenter.logFootprint(_:)` 在每次 map ready 打印 phys_footprint，
-  长跑观测有数据可查（"没日志就死命猜"）。
-**验证**：30s 换图间隔连续轮换 78 张不同地图（约 40 分钟），footprint
-min=286 / median=400 / max=612 MB，无单调增长；残余波动为不同地图 atlas
-大小差异与 malloc 未归还页，正常。
-**教训**：`sample` 先排除 CPU 热点，再按"哪些集合只进不出"排查——
-长生命周期 App 里，一切无淘汰策略的缓存都会成为内存曲线的斜率。
-
-## 28. 电池模式策略：从"1fps 慢放"改为"完全停止渲染"（0fps）
-
-**原设计**：电池供电时 1fps + 冻结相机（`camera.setFrozen`），每 3 秒在 draw 回调里
-复查供电。**问题**：draw 回调驱动的供电检查在暂停渲染后即失效；且 1fps 下天使动画、
-换图计时、跳点仍在走，并不"省到底"。
-**新设计**（2026-09-08）：
-- `MapPresenter` 持独立 `powerCheckTimer`（60s 间隔，主循环 common modes）——
-  **电源复查绝不能依赖 draw 回调**，否则停渲染后永远检不回来；
-- 检测到电池：`renderView.isPaused = true`（连 MTKView 的 display-link timer 一起停，
-  draw 早退只是不提交，timer 仍会按旧帧率空醒）+ `lastTimestamp = nil`（复位 dt）；
-  画面完全静止、不换图、不跳点；插电恢复渲染与计时。
-- `onBattery` 变为 `private(set)` 缓存值，draw 只读不清（draw 里原 3s 轮询已删）。
-**教训**：凡"状态驱动的降载"若依赖被降载路径本身的回调做恢复检查，必须把检查
-移到独立定时器/事件源；isPaused 才是停 display-link 的正确开关（preferredFramesPerSecond=0
-无效，draw 早退也不省 timer 唤醒）。
+## 1. Length of the unknown field in the DEF block header (the most elusive)
+
+**Symptom**: All objects render correctly, but terrain frames are shifted by one tile overall — tile (x,y) draws the content of a neighboring tile, and some tiles have scrambled colors.
+**Diagnosis**: Hex-dumped GRASTL.DEF and hand-computed the offset table at the two candidate positions: with unknown=8, all 79 frame offsets are valid; with unknown=12, the whole offset table shifts left by one frame.
+**Conclusion**: The block header's unknown field is **8 bytes** (per the VCMI source comment "8 unknown bytes - skipping"; the jadx-decompiled Def.java data class declaration is misleading).
+
+## 2. Magenta placeholder colors at the shadow indices
+
+**Symptom**: Magenta (255,0,255 family) patches appeared below/around objects; in the editor the same locations show dark shadows.
+**Diagnosis**: Extracted the magenta pixel colors → checked the def palette → indices 1/4/6/7 are exactly magenta placeholder colors.
+**Conclusion**: Force-map them to semi-transparent black at render time (VCMI ScalableImage semantics); see formats.md §2.5.
+
+## 3. Terrain def name mismatch with the LOD entry name
+
+**Symptom**: Objects all correct, terrain all black (terrainHit=0/1296).
+**Diagnosis**: Logs showed a non-empty missingDefs; the render key was the bare name "GRASTL" while the LOD entry was "GRASTL.DEF".
+**Conclusion**: AssetLibrary appends a `.DEF` suffix to keys that lack a `.` during lookup (case-insensitive).
+
+## 4. Negative modulo and check ordering for boundary frame indices
+
+**Symptom**: Golden frames broken at the map's four corners; tiles like (-2,-1) drawn incorrectly.
+**Diagnosis**: Cross-checked the VCMI getIndexForTile source: check "far outside the map" first, then edges; and Swift's `%` keeps the sign for negative operands (-2 % 4 = -2), so frame indices went negative.
+**Conclusion**: Reorder the checks + `abs()`; see formats.md §5.
+
+## 5. OOM / infinite loop caused by a corrupted def
+
+**Symptom**: `--snapshot` occasionally failed with `failed to allocate 1.5e16 bytes` (OOM) or hung at 99% CPU.
+**Diagnosis**: lldb + sample profiling: DefFile.init was stuck in the offsets loop; the root cause was upstream decompression failure producing garbage data → framesCount parsed as an astronomically large number.
+**Conclusion**: Three layers of defense — groupsCount ≤ 64, framesCount ≤ 100k, frame dimensions 1..4096;
+the legacy probe's "copy the whole byte stream per frame" was replaced with O(1) direct indexed reads (it was the root of the O(N²) hang).
+
+## 6. MTKView does not present automatically (macOS desktop-level window)
+
+**Symptom**: In GUI mode the window was entirely black, but the render loop was fine (draw count increasing, CPU usage normal).
+**Diagnosis**: A red-screen test (setting clearColor to pure red) stayed black → ruled out drawing-content issues and pinned it on the drawable never being committed to the window surface.
+**Conclusion**: Explicitly call `view.currentDrawable?.present()` before `draw(in:)` returns.
+This is MTKView behavior under a specific configuration (no CAMetalLayer delegate involvement + a desktop-level window);
+with the explicit present everything works.
+**Note**: `screencapture -l<winid>` cannot get the contents of an occluded Metal window (black image);
+use Quartz `CGWindowListCreateImage` for offscreen compositing, or temporarily raise the window to the floating level
+(this repo keeps the `--level-floating` launch argument as a verification aid).
+
+## 7. Screenshot verification methodology for occluded windows
+
+A desktop wallpaper is naturally occluded by every application window. The verification chain:
+1. **Headless CLI render** (`--snapshot`) to verify rendering correctness — compared tile-by-tile against the editor canvas;
+2. **Quartz offscreen compositing** (`CGWindowListCreateImage` + `kCGWindowListOptionIncludingWindow`)
+   to verify the real window's bitmap contents;
+3. **Translucent menu bar screenshot**: the menu bar area is forced translucent by the system, so the wallpaper shows through in screenshots,
+   as final evidence that "the wallpaper really renders at the desktop level";
+4. `--level-floating` to temporarily raise the window for direct visual inspection (turned off after verification).
+
+## 8. Browser-cached stale atlas causing "map edge anomalies" (Web version)
+
+**Symptom**: Users reported that on the Web version the map edges (the out-of-map area) showed dark-green vegetation plus golden mottled textures; outside the L-shaped golden frame was not dark rock.
+**Diagnosis**: Incognito mode (cache disabled) rendered the same view perfectly correctly, pixel-identical to the Swift version (diff 4.45);
+and frames EDG 0-15 were verified by decoding to be pure gray-black rock tones (no green pixels, no high-saturation yellow) — they could not possibly produce the texture the user saw.
+The root cause: the atlas generation logic changed during development, but the browser still held a cached copy of the old atlas PNG
+(max-age=3600 was set at the time).
+**Fix**: Fingerprint the atlas URL with content — `/atlas/<map>/level<L>-<mtime>-<frame count>-<object count>/atlas-N.png` —
+and change the cache header to `immutable, max-age=31536000`: whenever the content changes the URL necessarily changes, so a stale atlas is never used;
+the server stores directories per fingerprint, and old directories only waste disk, not correctness.
+**Lesson**: Static assets produced by a build pipeline must use content-addressed URLs,
+especially during development; otherwise any fix on the generation side gets "rolled back" by the browser cache.
+
+## 9. Roads "broken at the joints" — wrong traversal target (lower half of roads missing)
+
+**Symptom**: Roads were missing half a tile where they terminated downward — visually the road broke at tile edges; junctions were discontinuous.
+**Diagnosis**: A line-by-line comparison with VCMI `MapRendererRoad::renderTile` revealed a traversal-semantics difference:
+VCMI renders **every tile** in the viewport (this tile has no road but the tile above does → still draw the lower half of the upper tile's road image),
+while my implementation only iterated tiles that have roads → tiles where "the tile above has a road but this one doesn't" were skipped.
+601 tiles affected on the Viking map; 20602 tiles across 158 maps in total.
+**Fix**: Changed the road layer to a double loop over viewport tiles (Swift `Renderer.swift` / JS `viewer.js` updated in sync).
+**Lesson**: When porting a render loop, "which tiles to render" matters as much as "what to draw";
+VCMI's per-tile renderTile model means every sub-renderer applies to all tiles,
+skipping only the drawing when data is absent — not driving the traversal from data existence.
+
+## 10. Atlas immutable-cache "poisoning" (Web, the most elusive)
+
+**Symptom**: After fixing the atlas generation logic, developer verification passed (incognito/cleared cache), but in users' browsers it "still wasn't fixed" — half the map rendered wrong content (terrain displaced into dark colors).
+**Root-cause chain**: The atlas URL only contained `map mtime - frame count - object count`. After the generation code changed, the same map's
+frame/object counts could stay exactly the same → URL unchanged → while the atlas response header was
+`Cache-Control: public, max-age=31536000, immutable` → the browser reused the old atlas [forever].
+The scene JSON (no cache header) was new and the atlas was old → frame coordinates pointed at wrong content in the old atlas.
+**Fix**: Appended a [server code fingerprint] to atlasVersion (the first 8 hex chars of the md5 over mtime+size of Scene/DefFile/H3m/Lod/Reader/Server) — any code change forces a URL change, and the cache invalidates automatically.
+**Lesson**: The "content" of a content-addressed URL must cover **all inputs that affect the artifact** (data + code),
+otherwise the immutable cache will "roll back" the fix. Always verify with both an incognito window and server-side content spot checks.
+
+## 11. headless Chrome screenshots miss a fixed-size canvas (verification tooling pitfall)
+
+**Symptom**: After giving the canvas a fixed CSS size (the `&win=WxH` automated comparison mode),
+the canvas area in `--screenshot` output showed a dark ghost, while the page actually rendered correctly.
+**Diagnosis**: POSTed `canvas.toDataURL()` from the page back to the server (canvas dump) for comparison —
+the canvas content was perfectly correct (diff 5.25 vs Swift), proving it was a screenshot-pipeline issue rather than a rendering issue
+(under virtual time, a fixed-size canvas's presentation timing is out of sync with the screenshot).
+**Lesson**: headless screenshots may not match the page's real rendering; for automated canvas verification,
+prefer `toDataURL` round-trips with screenshots as an auxiliary; fixed-viewport mode is only for precise alignment math.
+
+## 12. Roads riding the tile gridlines — canvas semantics of frame margin
+
+**Symptom**: Roads were offset by half a tile overall with stretched textures; road surfaces straddled the middle of two tile rows, misaligned with the terrain grid.
+**Diagnosis**: Dumping the DIRTRD.DEF frame structure showed a 32×32 canvas with data carrying a margin (horizontal road 32×14@margin(0,9),
+vertical road 14×32@margin(9,0)). When implementing the half-tile crop I treated VCMI's `Rect(0,16,32,16)` as **data coordinates**
+(cropping the lower half of the data, 32×7, plus stretching), when it is **canvas coordinates** (the intersection of the canvas's lower half with the data).
+**Fix**: Added canvas-space cropping (intersection) — mirror the canvas rectangle per the flip bits, intersect it with the data rectangle [ox,oy,w,h],
+take the intersection's UVs directly from the atlas, and compute the screen position as tile origin + cropped-region origin + the intersection's offset within the cropped region.
+Swift `Renderer.canvasCrop` / JS `viewer.drawFrameCanvas`; both ends verified the road row distribution offset as 0px.
+**Lesson**: When a def frame's fullWidth/fullHeight differ from the data width/height (true for all roads),
+any cropping/positioning must be done in canvas coordinates; all VCMI `Rect` parameters are canvas coordinates.
+
+## 13. Byte reconciliation method for h3m parsing
+
+The h3m format has many version-dependent sections; the way to localize parsing drift is **checkpoint byte offsets**:
+record `reader.pos` at the end of each of the header/terrain/defs/objects sections and compare against the total file length.
+- End of the terrain section = 1296 tiles × 7 bytes (36×36 map), directly verifiable;
+- End of the objects section ≈ end of file (only small sections like events remain after it).
+If any section's computed "next byte" fails to match the actual content (e.g. the defs section does not start with a plausible defCount),
+you can localize the payload-skipping error to a specific object type. This project once used the method to discover that victory condition
+case 3 skipped 1 byte too few (it should be 5 bytes: 3 coordinates + 2 parameters).
+
+## 14. extTileFlags flip bits: bit0 = left-right mirror (VCMI names by "axis", not "direction")
+
+**Symptom**: Coastlines showed blocky mis-joins (water transition frames with wrong orientation), and road corners/diagonal segments broke into dangling short strips.
+The user observed "the texture would match if rotated 90°/180°" — in fact the mirror was applied backwards: on a 45° diagonal frame, swapping H/V mirrors
+looks approximately like "rotated by 90°".
+
+**Diagnosis**: VCMI `MapTileStorage::load` (MapRenderer.cpp) loads the same def into 4 slots:
+slot 1 calls `verticalFlip()`, slot 2 calls `horizontalFlip()`, slot 3 both; at render time
+`rotationIndex = extTileFlags % 4` (terrain) / `>>2` (river) / `>>4` (road) is used directly as the slot number.
+Reading the names literally suggests "bit0 = up-down flip", but VCMI's `verticalFlip()` is **flip around the vertical axis = left-right mirror**.
+Empirical method: take one tile (e.g. Viking map tile(94,28) dir=5 flags=0x2), exhaustively compare all 16 frames × 4 flips against vcmieditor's pixels for the same tile;
+the only combination with 0.0 error = frame5 + up-down mirror ⇒ bit1 = up-down mirror,
+bit0 = left-right mirror (consistent across the terrain/river/road layers, each verified down to zero error at pixel level against the editor).
+
+**Fix**: `flipH = bits & 1`, `flipV = bits & 2` (same for all three layers).
+
+**Lesson**: Function names in open-source code are the first-hand semantics you copy, but naming may follow axis or direction inconsistently;
+whenever geometry orientation is involved, settle it in one shot with a pixel-level exhaustive reconciliation against real map tiles.
+
+## 15. Sub-rectangle cropping with flips must "flip first, crop second"
+
+**Symptom**: After the flip-bit semantics were corrected, straight roads were fully fine, but diagonal/corner roads still broke into two misaligned short strips.
+
+**Diagnosis**: VCMI's order is — `MapTileStorage::load` first mirrors **the whole frame** into the 4 slots,
+then `MapRendererRoad::renderTile` applies an ordinary `Rect(0,16,32,16)` crop to **the already-flipped image**.
+Our `canvasCrop`/`drawFrameCanvas`, however, did "mirror the canvas rectangle + sample the unflipped data":
+after mirroring the rectangle and intersecting with the data, the sampling coordinates did not follow the mirror, and no pixel mirroring was applied either. Straight road strips are left-right symmetric
+(14px centered) and survived by luck; diagonal strips (22×22@(10,10)) land in a different quadrant when mirrored and broke immediately.
+
+**Fix**: Rewrote in VCMI's order — mirror the **data rectangle** into flipped-canvas space and intersect there (the intersection coordinates are screen
+coordinates), sample the unflipped atlas data, then: Metal mirrors UVs inside the quad via shader flags (canvasCrop
+returns flags, replacing the previously hard-coded 0); Canvas2D wraps drawImage in `translate+scale(-1,1)`.
+After the fix, same-tile error vs the editor is 0.0.
+
+**Lesson**: `flip then crop` and `crop then flip` are equivalent for a **whole frame** but not for a **sub-rectangle**
+(after mirroring, the rectangle's position relative to the data changes). When copying VCMI's homework, copy the entire pipeline — not just the crop formula.
+
+## 16. Three kinds of measurement contamination in screen-level verification (differencing/template matching)
+
+While building automated verification of "is the picture slowly moving" for the dynamic wallpaper, three pitfalls hit in a row:
+1. **`screencapture` captures the whole screen** — foreground IDE/editor windows enter the frame, and the measured displacement actually belonged to the foreground window
+   (static UI → phase correlation constant at 0.00 with response 0.999, deeply misleading).
+   You must use `CGWindowListCreateImage` with the window ID to capture the target window itself.
+2. **Template-matching false peaks on pixel art** — grass textures repeat periodically and the map has many identical-looking castles; a 400px template
+   can produce a spurious "rigid displacement" with score≈1.0 at 100~200px offsets, and successive measurements contradicted each other.
+   Anchors must be **isolated and unique** structures (e.g. the snow-mountain castle cluster, the arena), with consistency required across multiple points.
+3. **Alignment direction/sign errors over and over**: np.roll's shift semantics are opposite to the direction of "content displacement"; work it out once
+   with arrows on a small image before using it. Final closed loop: log viewLeft/viewTop, read one line before and after the screenshots,
+   align the two frames by the logged delta × effZoom; the residual should contain only water/object animation.
+
+## 17. Metal single instance buffer overwritten by the next frame → occasional one-frame wrong texture (flicker)
+
+**Symptom**: The wallpaper occasionally flickered in small areas / showed white bars (captured once: a white horizontal bar appearing out of nowhere on the upper edge of a road), recovering after a single flash, at varying positions. The user described it as "like a texture error during refresh".
+
+**Diagnosis**: `Renderer` had a single 12.8MB `instanceBuffer` (storageModeShared) +
+`uniformBuffer`, overwritten each frame by a CPU `memcpy`, followed by a `draw(wait:false)` submission that **does not wait for the GPU**.
+With tens of thousands of instances across the whole map plus overdraw, one GPU frame could take over 16.7ms — the next frame's memcpy would
+overwrite the buffer while the GPU was still reading it, and the GPU read **torn data mixing old and new**: some quad's position/UV was the old frame's
+first half + the new frame's second half, painting white texels from elsewhere in the atlas onto the road for one frame.
+
+**Fix**: Apple's standard triple-buffer ring + semaphore back-pressure — 3 copies each of `instanceBuffers/uniformBuffers`,
+a `DispatchSemaphore(value:3)` that waits at the start of draw() and signals in the command buffer's `addCompletedHandler`;
+a slot is only reused after its command buffer completes. Building (buildFrame) only fills the CPU-side arrays and
+pendingUniforms; the memcpy moved to after draw() selects the slot. Two renders of the same view should diff to 0
+(any difference comes only from the randomElement of random object materialization; see GameMap).
+
+**Lesson**: When `waitUntilCompleted` is absent (asynchronous submission), every CPU-side shared buffer overwritten per frame
+must be grouped and reused by "frames in flight"; the symptom of such races is a **low-probability single-frame artifact**, hard to catch by screenshot or screen recording;
+localize it by auditing "who writes before the GPU has finished reading".
+
+## 18. Linear sampling must be paired with premultiplied alpha, or every sprite gets a faint outline
+
+**Symptom**: After enabling GPU linear sampling for smooth scrolling, a faint dark outline appeared around monsters/buildings/roads
+(absent in the real game). Reproducible from the user's screenshots.
+
+**Diagnosis**: The atlas stored **straight alpha** (RGB not premultiplied); linear sampling interpolated between
+the sprite's opaque edge and its transparent neighbor (RGB=0, A=0), producing transition pixels with halved RGB and halved A;
+after sourceAlpha blending, the transition pixel was darker than both sides → a dark halo around every sprite's edge.
+At zoom ≥2 each sprite edge necessarily lands mid-pixel, so the outline is constantly visible.
+
+**Fix**: Premultiply at atlas write time (RGB×A/255) and change the blend mode to
+`sourceRGB = ONE, destRGB = ONE_MINUS_SRC_ALPHA` (the standard premultiplied-compositing form).
+Black shadow pixels (A=64/128, RGB=0) are unchanged by premultiplication — no visual regression.
+The Web-exported PNG needs to be un-premultiplied back to straight alpha (this project's atlas shadows are all black, so visually indistinguishable).
+
+**Lesson**: Decide the alpha-premultiplication strategy the moment you enable linear texture filtering; "dark edges from blending" is
+the signature artifact of non-premultiplied + linear filtering.
+
+## 21. h3m header parsing: the size field's offset is not 0
+
+**Symptom**: Reading the h3m header (version, ?, size) with `struct.unpack("<iiI", raw)` produced an absurd size of one-to-two million
+(far beyond the actual h3m map edge lengths of 36~144), scrambling all grouping/sorting.
+
+**Diagnosis**: Cross-checked with Swift `H3mFile.swift` — the header is i32 version, **i8** hasPlayers, i32 size, i8 hasUnder.
+Python must use `struct.unpack_from("<i", raw, 5)` (the i32 starts at offset 5, skipping the hasPlayers byte).
+
+## 22. Cyan grid in the About dialog — color key not made transparent + box[8] mistaken for the interior background (dual root causes)
+
+**Symptom**: The interior of the About dialog was covered in a cyan (0,255,255) grid; the original heroes3
+dialog should be a brown paper background + a blue carved border. Straight from the user's screenshot.
+
+**Diagnosis** (per-frame statistics + cross-checking three VCMI source files):
+- Per-frame statistics over DIALGBOX's 11 frames: box[0..3] 59% cyan, box[8] 58%, box[4..7] 0%
+  → the cyan concentrated in two places: "outside the border" and "inside the frame".
+- `CBitmapHandler`/`CDefFile`: **cyan = the color at DEF palette index 0** (DIALGBOX's
+  palette[0] is pure cyan), i.e. the color key; VCMI loads with `EImageBlitMode::COLORKEY` making idx0
+  fully transparent. The export script's `colorKey` branch was never implemented at all (only shadows semantics existed), so color-key pixels
+  were painted opaque cyan — this is "why the cyan is visible".
+- `CMessage::drawBorder` (client/windows/CMessage.cpp): **draws only box[0..7]** (four corners
+  box[0..3] + four edges: box[4/5] left/right 14×64, box[6/7] top/bottom 64×15); box[8..10] are not used;
+  `CInfoWindow`'s interior background is `CFilledTexture("DiBoxBck")` (InfoWindows.cpp),
+  and `showAll` tiles the **DIBOXBCK.PCX** brown-paper texture. Treating box[8] as the "9-slice interior" and tiling it was
+  the first assumption taken for granted — box[8]'s interior is 58% color key, so tiling it necessarily produces a grid — this is "why the interior got covered".
+
+**Fix**: Added the `colorKey` branch to `frame_to_rgba` (idx0 → alpha 0); added H3-style PCX
+decoding (formats.md §2.8) and exported `background.png` from H3bitmap.lod; changed `Heroes3BorderView`
+to background tiling + drawing only box[0..7]. Screenshot re-verification showed the brown background and blue border correct.
+
+**Lessons**:
+1. **There are two kinds of placeholder color** — the magenta family (255,0,255) occupies the shadow indices 1/4/6/7, while cyan (0,255,255)
+   is the index-0 color key; UI sprites (COLORKEY mode) and object sprites (WITH_SHADOW mode) have different
+   transparency semantics, and the export tool must branch on sprite type.
+2. "9-slice" was imagination: VCMI's `drawBorder` assembles the frame from "4 corners + 4 edges" and tiles a separate
+   texture for the interior; before copying a UI layout, read the rendering function itself — don't apply generic graphics folklore.
+3. When a large area of "eerie solid color" appears, immediately check the palette index distribution (which index, what share);
+   that is far faster than "tweak the code and see".
+
+## 23. Black image from PNG export — missing per-scanline filter byte (write_png)
+
+**Symptom**: PIL rejected the exported about PNG with `OSError: unrecognized data stream contents`; NSImage failed to decode, and the About window was entirely black/blank.
+**Diagnosis**: The hand-written PNG's IDAT contained raw RGBA data directly. The PNG spec requires **one filter-type byte before every scanline**
+(0x00=None suffices); if missing, the entire stream is invalid.
+**Fix**: `append(0)` per line before concatenating that line's RGBA; `zlib.compress(..., 9)`.
+**Lesson**: When hand-writing a PNG encoder, the filter byte is the easiest thing to miss; the symptom of omitting it is
+"the decoder rejects it outright" rather than "the image is wrong". Using PIL `Image.open(...).load()` as an export self-check
+(which also counts non-transparent pixels) catches it before packaging.
+
+## 24. NSWindow content constraint crash — subview enters NSLayoutConstraint without addSubview
+
+**Symptom**: `--about` crashed at launch with no window; running the binary directly showed
+`NSGenericException: unable to satisfy constraints ... because they have no common ancestor`.
+**Diagnosis**: `logoView` was only referenced by constraints (`logoView.centerXAnchor == centerXAnchor`);
+`addSubview(logoView)` was missing — constraint pairs with no common ancestor throw on activate.
+**Fix**: Added the missing `addSubview` before activating constraints (the labels loop already had it; only the logo was missed).
+**Lesson**: AppKit has no "declare to attach" like SwiftUI; the NSView hierarchy accumulates imperatively —
+addSubview first, then constraints. Crash logs of LSUIElement apps don't land in Console.app's
+usual place; running the binary from the command line and watching stderr is fastest.
+
+## 25. About border "corners misaligned" — border drawn in window coordinates instead of the expanded rectangle, and the window not on the 64px grid
+
+**Symptom**: The four corner ornaments pointed the right way, but a ring of fallback color showed between the entire border and the window edges (it looked like "the border
+doesn't fit the window"); an earlier version also had white-block broken bands at the top/side edge junctions.
+**Root causes** (two layers):
+1. VCMI BORDERED's border canvas is the content rectangle **expanded** by 14 left/right and 15 top/bottom
+   (`CWindowObject::showAll`: `drawBorder(to, w+28, h+29, x-14, y-15)`).
+   The first version drew the border in "content-relative coordinates" — `drawSDL`'s y conversion missed adding the background origin for horizontal edges,
+   and the next version shrank everything inward instead — wrong in both directions, whose only visible result was "the border doesn't coincide with the window edges".
+2. The window 508×409 (content 480×380 + 28/29) is not on the 64px grid: stepping 64px along the top/bottom edges fits only
+   `(508-128)/64 = 5.9375` segments, leaving the tail uncovered → transparent gaps inside the border band, and a borderless
+   window shows white straight through.
+**Fix**:
+- Draw the border with **the whole window as the canvas** (no more content-relative conversion), SDL top-left coordinates → NSView bottom-left:
+  `nsY = winH - sdlY - frameH`; take the window size as **512×448 (a 128+64k grid)** — exactly 6 segments on top/bottom,
+  5 left/right, one per corner, zero cropping, zero gaps, and VCMI's +1 gap-filler is no longer needed.
+- First lay a dark-brown fallback color taken from DIBOXBCK across the whole window, then tile the content background, then stack the border —
+  the texture's transparent (color-key) pixels no longer reveal the window's white background.
+- Texture draws must use `.sourceOver`: `.copy` bitwise-replaces color-key transparent pixels, punching holes
+  (same origin as pitfalls #22, but here it shows as "white blocks / background bleeding through" rather than cyan).
+**Lesson**: To reproduce a VCMI layout, read `CWindowObject::showAll` first, not just `CMessage::drawBorder`
+— **the rectangle passed by the caller is the truth**; the border texture's 64px step means the window size should align to the 64px
+grid — arbitrary sizes only force gap-filling logic.
+
+## 26. dmg only 2MB — the LOD was never bundled; rendering depended on the dev machine's vcmi directory
+
+**Symptom**: The dmg was only 2MB. The user pointed out "the lod and maps must be bundled".
+**Root cause**: `build_app.sh` bundled only 20 small maps (1MB) + the About PNG; `AppDelegate.dataDir`
+and `main.defaultDataDir` hard-coded `~/Library/Application Support/vcmi/Data/H3sprite.lod`
+— it ran on this machine only because VCMI was installed on the dev machine; on any other machine it went straight to `library FAILED` black screen.
+**Fix**:
+- `build_app.sh` copies `H3sprite.lod` (62MB, all terrain/object sprites) into
+  `Resources/Data/`; if missing, it errors out and refuses to package (same for the maps directory).
+- `dataDir`/`defaultDataDir` gained a bundled-first fallback chain: UserDefaults dataDir >
+  **bundle Resources/Data/H3sprite.lod** > `~/Library/.../vcmi`.
+- `pick_maps.py` limit parameters accept both bytes (`80MB`) and map count; full-set XL/L
+  deduplicated copy of maps (38 maps, 3MB).
+**Lesson**: An abnormally small package artifact is a strong signal that resources never made it in; self-contained distribution must be verified by
+"still renders after wiping UserDefaults" (simulating a target machine without vcmi) — passing only on this machine doesn't count.
+
+## 27. Wallpaper memory keeps growing (245→412MB) — DefFile cache and viewer scene cache grow without eviction
+
+**Symptom**: After 4 hours of running, footprint grew from 245MB to 412MB; `sample` showed all threads idle
+(not a CPU hotspot) — i.e. an accumulation that "increments on map change and never falls back", not a runtime leak.
+**Root causes** (map-change cycle 15 minutes; +10MB per map matches the 4-hour growth):
+1. **`AssetLibrary.cache` grows without eviction** (primary): `AtlasBuilder.build` stuffed every DEF
+   (decompressed frame data) each map uses into the cache and never evicted on map change. def data is only needed while building the atlas
+   (baked into 2048×2048 pixel atlases); after baking it is dead weight.
+2. **`MapWebServer.cachedScene` never invalidated on map change**: it held full RGBA copies of the atlas pages
+   (16MB per page); the old map's copies stayed resident until the next viewer request or the 30-minute idle shutdown.
+**Fix**:
+- `library.purgeDefCache()` at the end of `AtlasBuilder.build` — cleared as soon as the atlas is baked;
+  on concurrent rebuild `def()` automatically re-reads the lod, costing only a redundant decompression, no correctness issue.
+- `MapPresenter.onMapChanged` callback (wired in AppDelegate to
+  `webServer.invalidateSceneCache()`); the old scene copy is invalidated on every map change.
+- `MapPresenter.logFootprint(_:)` prints phys_footprint on every map ready,
+  so long-run observation has data to check ("no logs means guessing blindly").
+**Verification**: rotating 78 different maps at 30s intervals (about 40 minutes), footprint
+min=286 / median=400 / max=612 MB, no monotonic growth; the residual fluctuation comes from atlas
+size differences between maps and malloc pages not yet returned — normal.
+**Lesson**: Use `sample` to rule out CPU hotspots first, then hunt for "collections that grow without eviction" —
+in a long-lived app, every cache without an eviction policy becomes the slope of the memory curve.
+
+## 28. Battery-mode strategy: from "1fps slow-down" to "fully stop rendering" (0fps)
+
+**Original design**: On battery, 1fps + frozen camera (`camera.setFrozen`), re-checking power every 3 seconds in the draw callback.
+**Problem**: a draw-callback-driven power check stops working once rendering pauses; and at 1fps the angel animation,
+the map-change timer and jumps kept running — not "saving all the way".
+**New design** (2026-09-08):
+- `MapPresenter` holds an independent `powerCheckTimer` (60s interval, main loop common modes) —
+  **the power re-check must never depend on the draw callback**, otherwise once rendering stops it can never detect the return of power;
+- On battery detected: `renderView.isPaused = true` (stops MTKView's display-link timer too;
+  early-returning from draw merely skips submission, and the timer would still wake up at the old frame rate) + `lastTimestamp = nil` (resets dt);
+  the picture is fully static: no map change, no jumps; plugging in restores rendering and timing.
+- `onBattery` became a `private(set)` cached value; draw only reads it, never clears it (the original 3s polling inside draw was deleted).
+**Lesson**: Whenever a "state-driven load reduction" relies on the reduced path's own callback for its recovery check, the check must move
+to an independent timer/event source; isPaused is the correct switch for stopping the display-link (preferredFramesPerSecond=0
+doesn't work, and early-returning from draw doesn't save the timer wakeups either).

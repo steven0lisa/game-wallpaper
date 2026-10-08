@@ -1,7 +1,8 @@
 name: Release
 
-# 版本号管理：git tag v{major}.{minor}（如 v1.0）即发布版本，tag 与 Release 一一对应。
-# push tag → 双架构构建 → dmg（lite，无版权资源）→ 自动生成更新说明 → GitHub Release。
+# Versioning: git tag v{major}.{minor} (e.g. v1.0) is a release; each tag maps 1:1
+# to a Release. Pushing a tag -> universal build -> dmg (bundled maps decrypted
+# from a secret; sprite assets stay bring-your-own) -> auto-generated notes -> GitHub Release.
 on:
   push:
     tags: ['v*']
@@ -16,14 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0        # gen_release_notes / rev-list 需要完整历史
+          fetch-depth: 0        # gen_release_notes / rev-list need full history
 
       - name: Validate tag format (v{major}.{minor})
         run: |
           TAG="${GITHUB_REF_NAME}"
           echo "tag: $TAG"
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+$ ]] || {
-            echo "ERROR: 版本号必须是 v{major}.{minor} 两段格式（如 v1.0），收到: $TAG" >&2
+            echo "ERROR: tag must be v{major}.{minor} (e.g. v1.0); got: $TAG" >&2
             exit 1
           }
 
@@ -32,7 +33,7 @@ jobs:
         env:
           MARKETING_VERSION: ${{ github.ref_name }}
           BUILD_NUMBER: ref-${{ github.ref_name }}
-          # 内置大地图加密副本的解密密码（无密码时打包降级为无地图 lite 版）
+          # Password for the encrypted bundled-map copies (without it the build degrades to a mapless package)
           BUNDLED_MAPS_PASS: ${{ secrets.BUNDLED_MAPS_PASS }}
 
       - name: Generate release notes

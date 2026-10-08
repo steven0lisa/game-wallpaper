@@ -1,98 +1,118 @@
-# GameWallpaper — 多游戏引擎动态壁纸（macOS + Web）
+# GameWallpaper — Multi-Game-Engine Live Wallpaper (macOS + Web)
 
-把经典游戏的地图/关卡实时渲染成桌面动态壁纸。运行时（壁纸壳）与游戏引擎解耦，
-当前内置 **Heroes of Might & Magic III** 引擎，后续将接入更多游戏
-（仙剑、星际争霸等，见 [docs/architecture.md](docs/architecture.md)）。
+English | [中文](README.zh-CN.md)
 
-Heroes3 引擎：原版游戏素材（`H3sprite.lod`）驱动，`.h3m` 地图实时渲染——水面/岩浆
-调色板动画、物件待机动画、相机自动漫游，与 VCMI 引擎的实际游戏画面一致。
+Turn classic game maps into live desktop wallpapers. The wallpaper runtime is
+decoupled from game engines: it currently ships with a **Heroes of Might & Magic
+III** engine, and more games (PAL, StarCraft, …) can be plugged in — see
+[docs/architecture.md](docs/architecture.md).
 
-| 平台 | 技术 | 入口 |
+The Heroes3 engine renders `.h3m` maps in real time, driven by the original game
+assets (`H3sprite.lod`): water/lava palette animation, object idle animation and
+an auto-roaming camera, matching VCMI's actual in-game rendering.
+
+| Platform | Technology | Entry |
 |---|---|---|
-| macOS | Swift + Metal（桌面层窗口），SwiftPM 三 target | `scripts/build_app.sh` → `build/GameWallpaper.app` |
-| Web | Node 零依赖服务 + HTML Canvas（地图查看器） | `cd web && npm start` → http://localhost:8765 |
+| macOS | Swift + Metal (desktop-level window), 3-target SwiftPM | `scripts/build_app.sh` → `build/GameWallpaper.app` |
+| Web | Zero-dependency Node server + HTML Canvas (map viewer) | `cd web && npm start` → http://localhost:8765 |
 
-> 原版游戏资源（.lod/.h3m）版权属 Ubisoft / New World Computing；**本仓库不含任何
-> 游戏资源文件**，需自备（推荐装 [VCMI](https://github.com/vcmi/vcmi)）。
+> Original game assets (`.lod`/`.h3m`) are copyrighted by Ubisoft / New World
+> Computing. **This repository contains no game asset files** (three bundled XL
+> maps are stored AES-encrypted); bring your own — installing
+> [VCMI](https://github.com/vcmi/vcmi) is the easiest way.
 
 ![screenshot](docs/wallpaper_final.png)
 
-## 架构
+## Architecture
 
 ```
 Sources/
-├── WallpaperCore/       壁纸壳（与游戏无关）：引擎协议、桌面层窗口、渲染循环、
-│                        电池/休眠策略、跳点相机、About 窗口
-├── Heroes3Engine/       Heroes3 引擎：lod/def/h3m 解析、图集、Metal 渲染、
-│                        内置 Web 查看器、无头 CLI
-└── GameWallpaper/       装配层（executable）：注册引擎 + 菜单栏 UI
+├── WallpaperCore/       Wallpaper shell (game-agnostic): engine protocols, desktop-level
+│                        window, render loop, battery/sleep power policy, jump camera,
+│                        About window
+├── Heroes3Engine/       Heroes3 engine: lod/def/h3m parsing, atlas, Metal rendering,
+│                        built-in web viewer, headless CLI
+└── GameWallpaper/       Assembly (executable): engine registration + menu bar UI
 ```
 
-引擎接入协议与扩展指南：**[docs/architecture.md](docs/architecture.md)**。
-渲染语义细节（与 VCMI 对齐的常量/公式）：[docs/rendering.md](docs/rendering.md)、
-踩坑记录：[docs/pitfalls.md](docs/pitfalls.md)。
+Engine protocol and how to add a new game: **[docs/architecture.md](docs/architecture.md)**.
+Rendering semantics (VCMI-aligned constants/formulas): [docs/rendering.md](docs/rendering.md);
+file-format reverse-engineering notes: [docs/formats.md](docs/formats.md);
+lessons learned: [docs/pitfalls.md](docs/pitfalls.md).
 
-## 使用（macOS）
+## Usage (macOS)
 
 ```bash
-# 构建（需要 Xcode，macOS 13+；本机需有 H3sprite.lod，见 docs/environment.md）
+# Build (requires Xcode, macOS 13+; H3sprite.lod must be present locally,
+# see docs/environment.md)
 ./scripts/build_app.sh
-open build/GameWallpaper.app   # 菜单栏出现 🎮 图标
+open build/GameWallpaper.app   # a 🎮 icon appears in the menu bar
 ```
 
-- **地图来源**：默认加载 `~/Library/Application Support/vcmi/Maps/` 下全部 `.h3m`，
-  每 15 分钟自动换一张；菜单栏可「Next Map Now」「Open Map…」「Choose Maps Folder…」。
-- **游戏素材**：默认读取 `~/Library/Application Support/vcmi/Data/H3sprite.lod`。
-- **菜单栏设置**：缩放 1×–4×、亮度压暗 0–60%、暂停/恢复、立即切换地图。
-- **渲染层级**：窗口钉在桌面层（kCGDesktopWindowLevel，Plash 同款方案）——位于壁纸
-  之上、桌面图标之下，所有 Space 可见，不抢占鼠标点击。
-- **省电**：显示器休眠即暂停渲染；电池供电时完全停止渲染（0fps），接电自动恢复。
-- **退出**：菜单栏 → Quit。
+- **Map source**: if a maps folder was set (「Choose Maps Folder…」), maps are
+  loaded from it; otherwise the **3 bundled XL maps** are used automatically.
+- **Game assets**: `Data/H3sprite.lod` inside the data folder (VCMI's directory
+  by default); pick it via 「Choose Data Folder…」 if the app starts without assets.
+- **Menu bar settings**: zoom 1×–4×, brightness dim 0–60%, pause/resume, next map now.
+- **Window level**: pinned at the desktop level (kCGDesktopWindowLevel, same
+  approach as Plash) — above the wallpaper image, below desktop icons, visible
+  on every Space, never intercepting mouse clicks.
+- **Power saving**: rendering pauses when displays sleep; on battery power it
+  stops completely (0 fps) and resumes when plugged in.
+- **Quit**: menu bar → Quit.
 
-### 验证用 CLI（无头单帧渲染）
+### Headless CLI (single-frame verification)
 
 ```bash
 .build/release/GameWallpaper --snapshot <map.h3m> --out snap.png \
-    [--data-dir <vcmi 目录>] [--width 1920 --height 1080] [--time-ms 3000] \
+    [--data-dir <vcmi dir>] [--width 1920 --height 1080] [--time-ms 3000] \
     [--zoom 1] [--center-x 0.5 --center-y 0.5] [--level 0]
 ```
 
-## Web 版地图查看器
+## Web Map Viewer
 
-`web/` 是同源逻辑的浏览器版：Node 后端（零依赖，移植同一套 lod/def/h3m 解析器，
-位于 `web/server/engines/heroes3/`）+ HTML Canvas 前端，渲染完整地图，支持拖拽/
-缩放/切图/动画。macOS app 菜单栏的「Map Viewer」内置同一套 HTTP API
-（`/api/maps`、`/api/scene`、`/atlas/...`）。
+`web/` is the browser sibling sharing the same parsing logic: a zero-dependency
+Node backend (same lod/def/h3m parsers, at `web/server/engines/heroes3/`) plus
+an HTML Canvas front end that renders full maps with pan/zoom/switch/animation.
+The macOS app's「Map Viewer」menu item serves the same HTTP API (`/api/maps`,
+`/api/scene`, `/atlas/...`).
 
 ```bash
 cd web && npm start   # http://localhost:8765/
 ```
 
-## 版本与发布
+## Versioning & Release
 
-- 版本号格式 **`v<major>.<minor>`**（git tag，如 `v1.0`），tag 与 Release 一一对应。
-- push tag 后 GitHub Actions 自动：双架构构建 → 打包 dmg（内置 3 张 XL 大地图，
-  加密副本解密；精灵资源仍需用户自备）→ 生成更新说明（自上个 tag 以来的
-  feat/fix 分组）→ 发布 GitHub Release。
-  见 [.github/workflows/release.yml](.github/workflows/release.yml)。
-- 发版流程：
+- Version format: **`v<major>.<minor>`** git tags (e.g. `v1.0`); each tag maps
+  1:1 to a Release.
+- Pushing a tag triggers GitHub Actions: universal build → dmg packaging
+  (with the 3 bundled XL maps decrypted from a repo secret; sprite assets are
+  still bring-your-own) → release notes grouped by feat/fix/other since the
+  previous tag → GitHub Release. See
+  [.github/workflows/release.yml](.github/workflows/release.yml).
+- Release flow:
 
   ```bash
   git tag v1.1 && git push origin v1.1
   ```
 
-- 本地构建可覆盖版本：`MARKETING_VERSION=1.1 BUILD_NUMBER=42 ./scripts/build_app.sh`。
+- Bundled maps maintenance: list them in `scripts/bundled_maps.txt`, then run
+  `scripts/bundle_maps.sh encrypt` (password file: `~/.config/gamewallpaper/bundled-maps-pass`,
+  also configured as the `BUNDLED_MAPS_PASS` repo secret).
+- Local build version overrides: `MARKETING_VERSION=1.1 BUILD_NUMBER=42 ./scripts/build_app.sh`.
 
-## 已知限制 / 后续
+## Known Limitations / Roadmap
 
-- 只渲染地表层（underground 层已解析，可在 WallpaperPresenter 里切换 level=1）。
-- 英雄/旗帜未做玩家色染色（def 索引 5 已留位）；每 15 分钟换图时可加 underground 轮换。
-- 战争迷雾、英雄移动动画不适用（壁纸无游戏状态）。
-- dmg 为未签名构建：首次打开若被 Gatekeeper 拦截，右键 → Open，或
-  `xattr -d com.apple.quarantine /Applications/GameWallpaper.app`。
+- Only the surface layer is rendered (the underground layer is parsed already;
+  switchable via `level=1` in WallpaperPresenter).
+- Heroes/flags are not player-color tinted yet (def index 5 reserved).
+- Fog of war and hero movement animation do not apply (no game state in a wallpaper).
+- The dmg is an unsigned build: if Gatekeeper blocks the first launch, right-click
+  → Open, or `xattr -d com.apple.quarantine /Applications/GameWallpaper.app`.
 
-## 参考
+## References
 
-- [VCMI](https://github.com/vcmi/vcmi)（渲染语义与格式权威参考）
-- [IlyaPomaskin/h3lwp](https://github.com/IlyaPomaskin/h3lwp)（Android 版 Heroes 3
-  live wallpaper，本项目解析器/图层行为的基线）
+- [VCMI](https://github.com/vcmi/vcmi) (authoritative reference for rendering
+  semantics and formats)
+- [IlyaPomaskin/h3lwp](https://github.com/IlyaPomaskin/h3lwp) (Android Heroes 3
+  live wallpaper; baseline for this project's parsers/layer behavior)

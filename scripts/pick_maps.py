@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""挑选用于打包内置的地图：优先大地图（XL > L > M > S），相近名去重。
+"""Picks maps to bundle into the app: prefers larger maps (XL > L > M > S), dedupes similar names.
 
-用法: pick_maps.py <out_dir> [count=20 | size如80MB] <maps_dir> [more_maps_dir...]
+Usage: pick_maps.py <out_dir> [count=20 | size like 80MB] <maps_dir> [more_maps_dir...]
 
-规则：
-  * 解析 h3m 头读取地图尺寸（XL=144 / L=108 / M=72 / S=36）；
-  * 按【尺寸 → 文件字节】排序，先选完所有大尺寸组，再选下一组；
-  * 与已选地图"标准化名字"相似度 >= 0.72 的跳过（很多地图只是改了逻辑换个名字），
-    只保留最大那张。
+Rules:
+  * Reads the h3m header for the map size (XL=144 / L=108 / M=72 / S=36);
+  * Sorts by [size -> file bytes]; picks whole size groups, largest first;
+  * Skips maps whose normalized name is >= 0.72 similar to an already-picked one
+    (many maps are the same layout with tweaks), keeping only the largest.
 """
 import os
 import re
@@ -19,13 +19,13 @@ from difflib import SequenceMatcher
 
 
 def h3m_size_and_path(p):
-    """读取 h3m 头的 size 字段（地图边长格子数），失败返回 0。"""
+    """Reads the map size (grid edge, in tiles) from the h3m header; 0 on failure."""
     try:
         with open(p, "rb") as fp:
             raw = fp.read()
         if raw[:2] == b"\x1f\x8b":
             raw = gzip.decompress(raw)
-        # h3m header: i32 version, i8 hasPlayers, i32 size(grid 边长), ...
+        # h3m header: i32 version, i8 hasPlayers, i32 size (grid edge), ...
         sz = struct.unpack_from("<i", raw, 5)[0]
         return int(sz)
     except Exception:
@@ -58,13 +58,13 @@ def main() -> int:
             else: group = 4
             items.append((sz, fs, p, f, group))
 
-    # 优先 h3m 尺寸大（XL 排最前），同尺寸下再按文件字节
+    # Prefer larger h3m sizes (XL first), then by file bytes within a size
     items.sort(key=lambda x: (-x[0], -x[1]))
 
-    # 用户要求：内置地图只保留 XL(144) 和 L(108)，踢出 M(72)/S(36)/XS
+    # Bundled maps keep only XL(144) and L(108); drop M(72)/S(36)/XS
     items = [it for it in items if it[0] >= 108]
 
-    # 限额：纯数字 = 张数；带单位（如 80MB）= 累计文件字节上限
+    # Budget: a bare number = map count; with a unit (e.g. 80MB) = total file bytes
     limit_bytes = None
     m = re.fullmatch(r"(\d+)([KMG]?)B?", arg2.upper())
     if m and m.group(2):
@@ -102,7 +102,7 @@ def main() -> int:
         total += fs
         print(f"  {group_names.get(g, '?')}  {f:<48s}  {fs // 1024:>5d} KB  ({sz}x{sz})")
     print(f"selected {len(selected)} maps, {total // 1024 // 1024} MB total -> {out_dir}")
-    print("分布: XL={}  L={}  M={}  S={}  XS={}".format(*[by_group[i] for i in range(5)]))
+    print("distribution: XL={}  L={}  M={}  S={}  XS={}".format(*[by_group[i] for i in range(5)]))
     return 0
 
 

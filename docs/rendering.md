@@ -1,146 +1,104 @@
-# 渲染语义与 VCMI 对照（视觉一致性基准）
+English | [中文](zh-CN/rendering.md)
 
-本文档记录"地图实际运行画面长什么样"的每条渲染规则及其在 VCMI 源码中的出处，
-以及本项目的实现对照。目标：让壁纸与游戏内冒险地图画面一致。
+# Rendering Semantics and VCMI Cross-Reference (Visual Consistency Baseline)
+
+This document records every rendering rule that determines "what the running map actually looks like", together with its provenance in the VCMI source code and how this project implements each one. Goal: make the wallpaper match the in-game adventure map picture.
 
 ---
 
-## 1. 图层与绘制顺序
+## 1. Layers and Draw Order
 
-每帧绘制顺序（VCMI `MapRenderer.cpp` renderTile 循环，APK GameScreen 一致）：
+Per-frame draw order (VCMI `MapRenderer.cpp` renderTile loop; the APK GameScreen matches):
 
 ```
-边界(EDG) → 地形 → 河流 → 道路 → 物件（按排序）
+EDG border → terrain → river → road → objects (sorted)
 ```
 
-本项目在实例数组中按此顺序追加，单次 instanced draw 完成（半透明混合按实例序）。
+This project appends instances to the instance array in this order and completes the frame in a single instanced draw (translucent blending follows instance order).
 
-## 2. 地形
+## 2. Terrain
 
-- 每格：`DEF = terrains[terrainType].tiles`，帧 = `terView`，翻转 = `extTileFlags & 3`。
-- **翻转位语义（三层一致，已对 vcmieditor 像素级验证）**：2-bit 值是"槽位号"，
-  bit0(0x01)=**左右镜像**、bit1(0x02)=**上下镜像**、0x03=双翻转。VCMI
-  `MapTileStorage::load` 把整张帧预翻转进 4 个槽位——注意其 `verticalFlip()` 是
-  "绕竖直轴翻转"=左右镜像，**命名按轴不按方向**，勿望文生义（详见 pitfalls #14）。
-- **不存在客户端邻域计算**：h3m 存什么帧就画什么帧（过渡瓦片是地图编辑器/RMG 写图时
-  用 terrainViewPatterns 算好的）。这是渲染端最重要的"免坑"结论。
-- 32×32 px/格；水/岩浆按调色板动画区间每 180ms 轮转一步。
-- 地形 blit 模式 OPAQUE（不透明，索引 0 也画出来）。
+- Per tile: `DEF = terrains[terrainType].tiles`, frame = `terView`, flip = `extTileFlags & 3`.
+- **Flip bit semantics (consistent across all three layers; verified pixel-by-pixel against vcmieditor)**: the 2-bit value is a "slot number"; bit0 (0x01) = **left-right mirror**, bit1 (0x02) = **top-bottom mirror**, 0x03 = both flips. VCMI `MapTileStorage::load` pre-flips each full frame into 4 slots — note that its `verticalFlip()` means "flip about the vertical axis" = left-right mirror; **the naming is by axis, not by direction**, so don't take it at face value (see pitfalls #14).
+- **No client-side neighborhood computation exists**: whatever frame the h3m stores is what gets drawn (transition tiles are worked out by the map editor / RMG at map-write time using terrainViewPatterns). This is the single most important "pitfall avoided" conclusion on the rendering side.
+- 32×32 px per tile; water/lava rotate one step through their palette animation ranges every 180ms.
+- Terrain blit mode is OPAQUE (opaque; index 0 is drawn too).
 
-## 3. 河流与道路
+## 3. Rivers and Roads
 
-- 河流：帧 = `riverDir`，翻转 = `(extTileFlags>>2)&3`，COLORKEY 透明（索引 0 透明），
-  带调色板动画（CLRRVR/MUDRVR/LAVRVR），180ms/步。
-- 道路：帧 = `roadDir`，翻转 = `(extTileFlags>>4)&3`，COLORKEY，**无动画**。
-- **道路的半格错位**（VCMI MapRendererRoad::renderTile 精确算法）：
-  每格的道路图被"下移 16px 跨两格"绘制——本格道路图的**上半 16px** 画到
-  本格的**下半**；**上方一格**道路图的**下半 16px** 画到本格的**上半**：
+- River: frame = `riverDir`, flip = `(extTileFlags>>2)&3`, COLORKEY transparency (index 0 is transparent), with palette animation (CLRRVR/MUDRVR/LAVRVR), 180ms/step.
+- Road: frame = `roadDir`, flip = `(extTileFlags>>4)&3`, COLORKEY, **no animation**.
+- **The road half-tile offset** (exact algorithm from VCMI MapRendererRoad::renderTile): each tile's road image is drawn "shifted down 16px, spanning two tiles" — the **top 16px** of this tile's road image goes to the **bottom half** of this tile; the **bottom 16px** of the tile **above**'s road image goes to the **top half** of this tile:
   ```cpp
-  target.draw(imageAbove, Point(0, 0),  Rect(0, 16, 32, 16));  // 上格下半 → 本格上半
-  target.draw(image,      Point(0, 16), Rect(0,  0, 32, 16));  // 本格上半 → 本格下半
+  target.draw(imageAbove, Point(0, 0),  Rect(0, 16, 32, 16));  // bottom half of tile above → top half of this tile
+  target.draw(image,      Point(0, 16), Rect(0,  0, 32, 16));  // top half of this tile → bottom half of this tile
   ```
-  即整条路的视觉位置比逻辑格低半格。
-- **⚠️ 带翻转的裁剪顺序（易错点）**：VCMI 是"**先整张镜像、后普通 Rect 裁剪**"
-  （槽位图已翻转）；对子矩形做"先裁剪后翻转"不等价——矩形镜像后与数据的相对
-  位置变了。直路条带左右对称所以侥幸无感，斜向条带（22×22@(10,10)）立刻断裂。
-  实现见 Swift `Renderer.canvasCrop`（数据矩形镜像进翻转画布空间求交 + shader
-  flags 在 quad 内镜像采样）与 JS `viewer.drawFrameCanvas`（同序 + scale(-1,1)），
-  双端均已对 vcmieditor 像素级验证（详见 pitfalls #15）。
+  In other words, the whole road sits visually half a tile below its logical tiles.
+- **⚠️ Crop order when flipping (pitfall)**: VCMI does "**mirror the whole image first, then crop with a plain Rect**" (the slot image is already flipped); "crop first, flip after" on the sub-rectangle is not equivalent — once mirrored, the rectangle's position relative to the data has changed. Straight road strips are left-right symmetric, so the mistake slips through by luck; diagonal strips (22×22@(10,10)) break immediately. See Swift `Renderer.canvasCrop` (mirror the data rect into flipped-canvas space and intersect + the shader mirrors sampling within the quad per flags) and JS `viewer.drawFrameCanvas` (same order + scale(-1,1)); both sides verified pixel-by-pixel against vcmieditor (see pitfalls #15).
 
-- **⚠️ 道路遍历语义（易错点）**：VCMI 对【视口内每个格子】调用 renderTile，而**不是**
-  只遍历有路的格子。本格无路但上格有路时，仍要画上格道路图的下半——否则道路
-  在"向下终止"的接驳处断裂（道路图的下半永远落在下一格）。Viking 地图有 601 个
-  这样的格子（158 张地图共 20602 个），全部会导致旧实现丢路面。河流没有此问题
-  （整帧画在本格，无跨格延伸）。
+- **⚠️ Road traversal semantics (pitfall)**: VCMI calls renderTile for **every tile in the viewport**, **not** only for tiles that carry a road. When this tile has no road but the tile above does, you must still draw the bottom half of the tile above's road image — otherwise the road breaks at "terminates downward" junctions (the bottom half of a road image always lands on the next tile). The Viking map has 601 such tiles (20602 in total across 158 maps), every one of which lost road surface under the old implementation. Rivers do not have this problem (the whole frame is drawn on this tile; nothing extends across tiles).
 
-- **⚠️ 道路/河流帧的 margin（画布语义，易错点）**：DIRTRD/GRAVRD/COBBRD 等帧的
-  **画布是 32×32，实际数据带 margin**（如横向泥路帧 12/13 是 32×14 数据、margin (0,9)，
-  即路面在画布 y=9..23 垂直居中；纵向帧 14×32、margin (9,0) 水平居中）。
-  VCMI 的 `draw(image, Point, Rect)` 中 Rect 是**画布坐标**——Rect(0,16,32,16) 取的是
-  画布下半（含透明 margin 与数据相交后的部分），**不是**数据坐标的下半。
-  若按数据坐标裁剪（把 32×14 数据直接画进 32×16 目标区），路面会被拉伸并整体
-  错位半格、骑在格线上。正确做法：画布矩形 ∩ 数据矩形求交，交区按画布内位置
-  映射到目标半格（Swift `canvasCrop` / JS `drawFrameCanvas`）。
-  地形/河流/物件帧是整帧绘制、margin 天然生效，只有"半格裁剪"路径踩这个坑。
+- **⚠️ Margins of road/river frames (canvas semantics, pitfall)**: for frames such as DIRTRD/GRAVRD/COBBRD, the **canvas is 32×32 while the actual data carries a margin** (e.g. the horizontal dirt-road frames 12/13 hold 32×14 data with margin (0,9), i.e. the road surface is vertically centered at canvas y=9..23; the vertical frame is 14×32 with margin (9,0), horizontally centered). In VCMI's `draw(image, Point, Rect)` the Rect is in **canvas coordinates** — Rect(0,16,32,16) takes the bottom half of the canvas (the part left after the transparent margin intersects the data), **not** the bottom half in data coordinates. Cropping in data coordinates instead (drawing the 32×14 data straight into a 32×16 target area) stretches the road surface, shifts it half a tile overall, and leaves it straddling the gridline. Correct approach: intersect canvas rect ∩ data rect, then map the intersection to the target half-tile by its position inside the canvas (Swift `canvasCrop` / JS `drawFrameCanvas`).
+  Terrain/river/object frames are drawn whole, so the margin takes effect naturally; only the "half-tile crop" path hits this pitfall.
 
-## 4. 物件
+## 4. Objects
 
-- 画布右下角锚定 anchor 格（见 formats.md §4）；帧数据按 margin 内偏移。
-- 帧循环：组 0 全部帧按 180ms/帧循环（待机动画）；逐对象错相。
-- 半透明阴影：索引 1 = 25% 黑、4 = 50% 黑（源自 def 调色板占位色替换，见 formats.md §2.5）。
-- 排序：placementOrder ↓ → y ↑ → 英雄置顶 → x ↑ → 文件序。
-- 不可见对象（VCMI getBaseAnimation 返回空）：EVENT(26)、GRAIL(36)；
-  随机英雄/占位符壁纸项目里也不画（无外观）。
+- The anchor tile is anchored at the bottom-right corner of the canvas (see formats.md §4); frame data is offset inward by the margin.
+- Frame loop: all frames of group 0 loop at 180ms per frame (idle animation); phases are staggered per object.
+- Translucent shadows: index 1 = 25% black, 4 = 50% black (from placeholder-color substitution in the DEF palette, see formats.md §2.5).
+- Sorting: placementOrder ↓ → y ↑ → heroes on top → x ↑ → file order.
+- Invisible objects (VCMI getBaseAnimation returns empty): EVENT(26), GRAIL(36); random heroes / placeholders are not drawn in the wallpaper project either (no visual).
 
-## 5. 边界
+## 5. EDG Border
 
-EDG.DEF 36 帧 + `getIndexForTile` 公式（formats.md §5）。
-游戏内 `showBorder()=true`，图外一圈画金框、更远画暗岩图案。
+EDG.DEF's 36 frames + the `getIndexForTile` formula (formats.md §5).
+In-game `showBorder()=true`: the ring just outside the map is drawn with a golden frame, and farther out with the dark rock pattern.
 
-## 6. 动画时序总表（VCMI MapRendererContext）
+## 6. Animation Timing Summary (VCMI MapRendererContext)
 
-| 内容 | 周期 | 出处 |
+| Content | Period | Source |
 |---|---|---|
-| 地形/河流调色板动画 | 180ms/步 | `baseFrameTime = 180` |
-| 物件待机帧 | 180ms/帧（相位 = objectID） | 同上 |
-| 物件移动帧（不适用壁纸） | 50ms/帧 | AdventureMovingContext |
-| 淡入淡出（不适用） | 500ms / 传送 250ms | MapViewController |
+| Terrain/river palette animation | 180ms/step | `baseFrameTime = 180` |
+| Object idle frames | 180ms/frame (phase = objectID) | same as above |
+| Object moving frames (not applicable to the wallpaper) | 50ms/frame | AdventureMovingContext |
+| Fades (not applicable) | 500ms / teleport 250ms | MapViewController |
 
-调色板动画周期 = 各轮转区间长度的 LCM（水 12 步 = 2.16s/循环，岩浆 9 步 = 1.62s）。
+The palette animation period = LCM of the individual rotation-range lengths (water: 12 steps = 2.16s per cycle; lava: 9 steps = 1.62s).
 
-## 7. 相机与缩放（本项目自定义，参考 VCMI 行为）
+## 7. Camera and Zoom (custom to this project, modeled on VCMI behavior)
 
-- VCMI 游戏：默认 tileSize 32，缩放步进 `32 * 1.01^n`，平移钳制在地图范围 + 边界。
-- 本项目壁纸：漫游相机在地图范围内随机目标点匀速滑动（22 map px/s）+ 驻留 4-9s；
-  视口钳制允许露出最多 4 格边界（`clamp` 里 ±128px）。
-- 缩放档 1×/2×/3×/4×（屏幕像素/地图像素），金属管线 nearest 采样保持像素风。
+- VCMI game: default tileSize 32, zoom steps of `32 * 1.01^n`, panning clamped to the map range + border.
+- This project's wallpaper: the roaming camera glides at constant speed (22 map px/s) toward random target points within the map range, dwelling 4-9s at each; viewport clamping allows up to 4 tiles of border to be revealed (±128px inside `clamp`).
+- Zoom levels 1×/2×/3×/4× (screen pixels / map pixels); the Metal pipeline uses nearest sampling to preserve the pixel-art look.
 
-## 8. 验证方法与结论
+## 8. Verification Methods and Results
 
-| 验证项 | 方法 | 结果 |
+| Verification item | Method | Result |
 |---|---|---|
-| 与游戏画面逐格对比 | `vcmieditor` 加载同一地图（与游戏共用 MapRenderer），截取画布 vs 本项目 `--snapshot` 同视角渲染，自动对齐 + 313 格 8×8 采样差分 | 平均差异全部来自编辑器 RES/MON 标记；地形/河流/道路/物件/阴影一致 |
-| 地形类型覆盖 | 《A Warm and Familiar Place》(rough/lava/rock/dirt) + 《Emerald Isles》(water/sand/grass/dirt) | 7 种地形 + 河流 + 道路 + 边界全部正确 |
-| 动画 | 同视角 t=0/540/1800ms 差分非零；真机运行 2s 差分非零（3.72/px） | 调色板动画 + 物件动画 + 相机漫游均生效 |
-| 帧率 | draw 计数 60fps | 60fps 稳定 |
-| 桌面集成 | 桌面层窗口 level -2147483623，半透明菜单栏下透出地图 | 通过 |
+| Tile-by-tile comparison against the game | `vcmieditor` loads the same map (shares MapRenderer with the game); capture its canvas vs this project's `--snapshot` render from the same viewpoint, auto-align + 313-tile 8×8 sampled diff | All average differences come from the editor's RES/MON markers; terrain/river/road/object/shadow all match |
+| Terrain type coverage | "A Warm and Familiar Place" (rough/lava/rock/dirt) + "Emerald Isles" (water/sand/grass/dirt) | All 7 terrain types + rivers + roads + border correct |
+| Animation | Same-viewpoint diffs nonzero at t=0/540/1800ms; on-device 2s diff nonzero (3.72/px) | Palette animation + object animation + camera roaming all working |
+| Frame rate | draw count at 60fps | Stable 60fps |
+| Desktop integration | Desktop-layer window level -2147483623; the map shows through beneath the translucent menu bar | Pass |
 
-复现对比：
+Reproduce the comparison:
 ```bash
-# 本项目渲染（与编辑器画布同像素尺度）
+# This project's render (same pixel scale as the editor canvas)
 .build/debug/GameWallpaper --snapshot "<map.h3m>" --out mine.png \
     --width 1152 --height 1152 --time-ms 0 --zoom 1 --center-x 0.5 --center-y 0.5
-# 打开编辑器看同一地图（vcmieditor 与游戏共用渲染器）
+# Open the editor on the same map (vcmieditor shares the renderer with the game)
 /Applications/VCMI.app/Contents/MacOS/vcmieditor "<map.h3m>"
 ```
 
-## 9. About 对话框（heroes3 风格 UI，VCMI CMessage 对照）
+## 9. About Dialog (heroes3-style UI, cross-referenced with VCMI CMessage)
 
-About 窗口的对话框观感按 VCMI 信息窗还原，三条规则都曾被想当然写错：
+The About window's dialog look is recreated after VCMI's info windows; three of the rules below were each once written wrong by assumption:
 
-- **边框位置——画在内容区外扩矩形上，不是窗口内缩处**：VCMI `CWindowObject::showAll`
-  （BORDERED）调用 `CMessage::drawBorder(color, to, pos.w+28, pos.h+29, pos.x-14, pos.y-15)`
-  ——内容区四周**外扩 左右 14px / 上下 15px** 才是边框画布。Swift 侧等价做法：窗口 =
-  内容 + 2×(14/15)，边框以整窗为画布绘制（SDL 顶左 y 向下 → NSView 底左 y 向上，
-  换算 `nsY = winH - sdlY - frameH`）。
-- **边框贴图**：`CMessage::drawBorder`（client/windows/CMessage.cpp）**只用 DIALGBOX.DEF
-  的 box[0..7]**——box[0..3] 四角（64×64）贴四角，box[4/5] 左右边（14×64）、
-  box[6/7] 上下边（64×15）沿轴步进平铺；绘制顺序"先边后角"（角覆盖边）。
-  **box[8..10] 完全不参与**（其内部像素是色键，不是内部背景）。
-  想当然的"9-slice 把 box[8] 平铺当内部"是首版青色网格的根因之一。
-- **窗口尺寸取 64px 网格（128+64k）**：边条步进 64px，窗口 512×448 时上下边恰好
-  6 条、左右边恰好 5 条，**无缝隙、无重叠**。VCMI 的 drawBorder 里 bottom/right 有
-  `+1` 重叠补缝，是任意尺寸下的兜底；网格对齐后即不需要。
-- **内部背景**：`CInfoWindow` 用 `CFilledTexture(ImagePath::builtin("DiBoxBck"), pos)`
-  （client/windows/InfoWindows.cpp），`showAll` 是**平铺**（x/y 按 tile 尺寸步进，
-  非拉伸）——棕纸纹理 DIBOXBCK.PCX 铺满内容区，边框叠在其上；边框贴图透明缝隙处
-  需整窗兜底色（取自 DIBOXBCK 的深棕），否则 borderless 窗口露白底。
-- 颜色：边框的玩家色段 224–255 在 DIALGBOX 自带调色板里就是蓝方渐变
-  （见 formats.md §2.7），无需重染；内部纸底主色 `(116,75,42)` 棕系。
-  "深蓝内部"的印象来自 H3 后期 UI 或 VCMI 皮肤，原版 DIALOG 即棕底蓝框。
-- **OK 按钮**：IOKAY32 帧自带金色对勾，NSButton 设 `imagePosition = .imageOnly` 后
-  **不要再设 `.title`**（title 会复写回文字显示模式）；无文字也不需要本地化键。
+- **Border position — drawn on the rectangle expanded outward from the content area, not inset within the window**: VCMI `CWindowObject::showAll` (BORDERED) calls `CMessage::drawBorder(color, to, pos.w+28, pos.h+29, pos.x-14, pos.y-15)` — the border canvas is the content area **expanded by 14px left/right and 15px top/bottom**. Equivalent approach on the Swift side: window = content + 2×(14/15), with the whole window as the border's canvas (SDL top-left, y-down → NSView bottom-left, y-up; convert with `nsY = winH - sdlY - frameH`).
+- **Border sprites**: `CMessage::drawBorder` (client/windows/CMessage.cpp) **uses only box[0..7] of DIALGBOX.DEF** — box[0..3], the four corners (64×64), go on the corners; box[4/5], the left/right edges (14×64), and box[6/7], the top/bottom edges (64×15), are tiled stepwise along their axes; draw order is "edges first, corners after" (corners cover edges). **box[8..10] take no part at all** (their inner pixels are color keys, not an inner background). The assumed "9-slice that tiles box[8] as the interior" was one root cause of the first version's cyan grid.
+- **Window size on the 64px grid (128+64k)**: edge strips step 64px; at 512×448 the window gets exactly 6 top/bottom strips and exactly 5 left/right strips, with **no gaps and no overlaps**. The `+1` overlap patching for bottom/right inside VCMI's drawBorder is a fallback for arbitrary sizes; once grid-aligned it is unnecessary.
+- **Interior background**: `CInfoWindow` uses `CFilledTexture(ImagePath::builtin("DiBoxBck"), pos)` (client/windows/InfoWindows.cpp), and `showAll` **tiles** it (x/y step by the tile size; not stretched) — the brown-paper texture DIBOXBCK.PCX fills the content area with the border drawn on top; the transparent gaps between border sprites need a whole-window fallback color (the dark brown taken from DIBOXBCK), otherwise a borderless window shows a white base.
+- Colors: the border's player-color segment 224–255 is already the blue-player gradient in DIALGBOX's own palette (see formats.md §2.7), so no re-tinting is needed; the interior paper base color is `(116,75,42)`, a brown. The "dark blue interior" impression comes from later H3 UI or VCMI skins; the original DIALOG is a brown base with a blue frame.
+- **OK button**: the IOKAY32 frame ships with a golden check mark; after setting `imagePosition = .imageOnly` on the NSButton, **do not set `.title` again** (title flips it back to text display mode); with no text, no localization key is needed either.
 
-实现：`AboutWindowController.swift`（Heroes3BorderView：兜底色 + background 平铺 +
-box[0..7] 以整窗为画布平铺）与 `scripts/export_about_assets.py`（DIALGBOX 色键透明 +
-DIBOXBCK.PCX → background.png）；坑详录 pitfalls #22/#25。
+Implementation: `AboutWindowController.swift` (Heroes3BorderView: fallback color + tiled background + box[0..7] tiled with the whole window as canvas) and `scripts/export_about_assets.py` (DIALGBOX color-key transparency + DIBOXBCK.PCX → background.png); pitfalls recorded in full in pitfalls #22/#25.
