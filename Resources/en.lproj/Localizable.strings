@@ -6,6 +6,7 @@
 "Menu.Zoom" = "Zoom";
 "Menu.Darker" = "Darker";
 "Menu.Brightness" = "Brightness";
+"Menu.ChooseDataFolder" = "Choose Data Folder…";
 "Menu.ChooseMapsFolder" = "Choose Maps Folder…";
 "Menu.OpenMap" = "Open Map…";
 "Menu.MapViewer" = "Map Viewer";

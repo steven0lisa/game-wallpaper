@@ -6,6 +6,7 @@
 "Menu.Zoom" = "缩放";
 "Menu.Darker" = "调暗";
 "Menu.Brightness" = "亮度";
+"Menu.ChooseDataFolder" = "选择数据目录…";
 "Menu.ChooseMapsFolder" = "选择地图文件夹…";
 "Menu.OpenMap" = "打开地图…";
 "Menu.MapViewer" = "地图查看器";

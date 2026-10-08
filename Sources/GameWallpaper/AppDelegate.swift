@@ -31,9 +31,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard let device = MTLCreateSystemDefaultDevice(),
-              let engine = try? Heroes3Engine(device: device, dataDir: dataDir) else {
-            NSLog("GameWallpaper: Metal unavailable or Heroes3 assets missing (dataDir=\(dataDir.path))")
+        bootstrapEngine()
+        buildMenu()
+
+        // 启动参数 --about：打开 app 后直接弹出 About 窗口（也用于无头验证）
+        if CommandLine.arguments.contains("--about") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
+                self?.showAbout()
+            }
+        }
+    }
+
+    /// 构造引擎与运行时。可重试：lite 版（无内置资源）首启时引擎资产缺失，
+    /// 菜单栏仍然可用，用户通过「Choose Data Folder…」指定资源目录后再次调用。
+    private func bootstrapEngine() {
+        guard engine == nil, let device = MTLCreateSystemDefaultDevice() else { return }
+        guard let engine = try? Heroes3Engine(device: device, dataDir: dataDir) else {
+            NSLog("GameWallpaper: Heroes3 assets missing at %@ — use 'Choose Data Folder…' menu", dataDir.path)
             return
         }
         self.engine = engine
@@ -60,14 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         loadMaps()
-        buildMenu()
-
-        // 启动参数 --about：打开 app 后直接弹出 About 窗口（也用于无头验证）
-        if CommandLine.arguments.contains("--about") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
-                self?.showAbout()
-            }
-        }
+        updateMenuTitle()
     }
 
     private func loadMaps() {
@@ -96,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let aboutItem = NSMenuItem(title: NSLocalizedString("Menu.About", value: "About Game Wallpaper…", comment: ""), action: #selector(showAbout), keyEquivalent: "")
 
     private func buildMenu() {
+        zoomItems.removeAll()
         let menu = NSMenu()
 
         sceneTitleItem.isEnabled = false
@@ -135,6 +143,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(brightRoot)
         menu.addItem(.separator())
 
+        let openData = NSMenuItem(title: NSLocalizedString("Menu.ChooseDataFolder", value: "Choose Data Folder…", comment: ""), action: #selector(chooseDataFolder), keyEquivalent: "")
+        openData.target = self
+        menu.addItem(openData)
+
         let openFolder = NSMenuItem(title: NSLocalizedString("Menu.ChooseMapsFolder", value: "Choose Maps Folder…", comment: ""), action: #selector(chooseMapsFolder), keyEquivalent: "")
         openFolder.target = self
         menu.addItem(openFolder)
@@ -163,10 +175,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateMenuTitle() {
-        let engineName = engine.map { type(of: $0).displayName } ?? ""
+        guard let engine else {
+            sceneTitleItem.title = "Game Wallpaper — assets missing (Choose Data Folder…)"
+            return
+        }
         let name = presenter?.current?.url.lastPathComponent
             ?? (presenter?.loading == true ? NSLocalizedString("Menu.Loading", value: "Loading…", comment: "") : NSLocalizedString("Menu.NoMap", value: "No map loaded", comment: ""))
-        sceneTitleItem.title = engineName.isEmpty ? "Game Wallpaper — \(name)" : "\(engineName) — \(name)"
+        sceneTitleItem.title = "\(type(of: engine).displayName) — \(name)"
     }
 
     @objc private func nextMap() {
@@ -198,6 +213,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pct = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6][sender.tag]
         presenter?.brightness = Float(pct)
         UserDefaults.standard.set(pct, forKey: "brightness")
+    }
+
+    /// lite 版首启：指定游戏数据目录（含 Data/H3sprite.lod）后重试引擎初始化
+    @objc private func chooseDataFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.directoryURL = dataDir
+        if panel.runModal() == .OK, let url = panel.url {
+            UserDefaults.standard.set(url.path, forKey: "dataDir")
+            bootstrapEngine()
+            buildMenu()
+        }
     }
 
     @objc private func chooseMapsFolder() {
