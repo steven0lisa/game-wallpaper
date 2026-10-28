@@ -16,7 +16,8 @@ const { AssetLibrary, buildScene, encodePng } = require(ROOT + '/web/server/engi
 
 const MAP = process.argv[2] || 'Back For Revenge';
 const BIN = process.argv[3] || path.join(ROOT, 'android/app/src/main/assets/scenes/scenes.bin');
-const REGION = 48; // tiles per side of the compared patch
+const REGION = parseInt(process.env.REGION || '48', 10); // tiles per side
+const X0 = parseInt(process.env.X0 || '40', 10), Y0 = parseInt(process.env.Y0 || '40', 10);
 const OUTA = '/tmp/roads_ref.png';
 let traceBox = null;
 const OUTB = '/tmp/roads_cand.png';
@@ -166,7 +167,7 @@ const trustAtlas = atlasPages.map((b) => ({ w: 2048, h: 2048, data: b }));
 let lastDraws = [];
 function renderRoads(withCandidate) {
   const size = withCandidate ? target.size : scene.size;
-  const x0 = 40, y0 = 40; // patch origin in tiles
+  const x0 = X0, y0 = Y0; // patch origin in tiles
   const W = REGION * 32, H = REGION * 32;
   const cnv = { width: W, height: H, data: Buffer.alloc(W * H * 4) };
 
@@ -374,7 +375,7 @@ for (let i = 0; i < A.data.length; i += 4) {
 }
 // ---- inspect cells at the first-diff location ----
 (function () {
-  const tx = 40 + Math.floor(first.x / 32); // world tile x
+  const tx = first ? X0 + Math.floor(first.x / 32) : -1; // world tile x
   console.log('[inspect] patch-px', first.x, first.y, '-> world tile', tx, ' rows y=39/40/41');
   for (const wy of [39, 40, 41]) {
     const rc = scene.roads.find((c) => c.x === tx && c.y === wy);
