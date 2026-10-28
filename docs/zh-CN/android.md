@@ -30,7 +30,7 @@
 个贴图 quad。两个 180ms 边界之间渲染线程休眠，CPU/GPU 零开销。
 
 实测（小米 14 档机型，300 秒、亮屏、桌面、壁纸可见）：原版 APK ≈ 10.6% CPU，
-本 APK ≈ 1%（见 `scripts/android_battery_bench.sh`）。
+本 APK ≈ 3.4%（见 `scripts/android_battery_bench.sh`）。
 
 ## 构建
 

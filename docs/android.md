@@ -36,7 +36,7 @@ The visible region at the default DPI-scale zoom is only ~411×914 world px
 boundaries the render thread sleeps with zero CPU/GPU work.
 
 Measured on a Xiaomi 14-class device (300 s, screen on, home screen, wallpaper
-visible): original APK ≈ 10.6% CPU, this APK ≈ 1% CPU (see
+visible): original APK ≈ 10.6% CPU, this APK ≈ 3.4% CPU (see
 `scripts/android_battery_bench.sh`).
 
 ## Build
