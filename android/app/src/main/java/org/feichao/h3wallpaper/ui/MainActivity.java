@@ -150,6 +150,9 @@ public class MainActivity extends Activity {
             ed.commit();
             sendBroadcast(new Intent("org.feichao.h3wallpaper.PAUSE_CHANGED"));
         }
+        if (getIntent().getBooleanExtra("selftest", false)) {
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::openWallpaperPicker, 800);
+        }
         refreshStatus();
     }
 
@@ -175,15 +178,21 @@ public class MainActivity extends Activity {
         // MIUI ignores ACTION_CHANGE_LIVE_WALLPAPER with the component extra;
         // the generic system chooser is the path that works everywhere.
         try {
+            Log.i(TAG, "picker: starting ACTION_LIVE_WALLPAPER_CHOOSER");
             startActivity(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER));
+            Log.i(TAG, "picker: chooser started ok");
             return;
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.w(TAG, "picker: chooser failed", e);
+        }
         try {
+            Log.i(TAG, "picker: starting CHANGE_LIVE_WALLPAPER");
             Intent i = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
             i.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
                     new ComponentName(this, H3WallpaperService.class));
             startActivity(i);
         } catch (Exception e) {
+            Log.w(TAG, "picker: all paths failed", e);
             Toast.makeText(this, R.string.wallpaper_inactive, Toast.LENGTH_LONG).show();
         }
     }
