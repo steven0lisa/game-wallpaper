@@ -172,18 +172,19 @@ public class MainActivity extends Activity {
     }
 
     private void openWallpaperPicker() {
+        // MIUI ignores ACTION_CHANGE_LIVE_WALLPAPER with the component extra;
+        // the generic system chooser is the path that works everywhere.
+        try {
+            startActivity(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER));
+            return;
+        } catch (Exception ignored) {}
         try {
             Intent i = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
             i.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
                     new ComponentName(this, H3WallpaperService.class));
             startActivity(i);
         } catch (Exception e) {
-            // some launchers reject the extras: fall back to the generic picker
-            try {
-                startActivity(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER));
-            } catch (Exception e2) {
-                Toast.makeText(this, R.string.wallpaper_inactive, Toast.LENGTH_LONG).show();
-            }
+            Toast.makeText(this, R.string.wallpaper_inactive, Toast.LENGTH_LONG).show();
         }
     }
 
