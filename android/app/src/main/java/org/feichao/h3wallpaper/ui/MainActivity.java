@@ -288,8 +288,10 @@ public class MainActivity extends Activity {
                     statusView.setText(R.string.update_failed);
                     return;
                 }
-                String cur = "v" + versionName();
-                if (lv.equalsIgnoreCase(cur)) {
+                String cur = versionName();
+                String a = cur.toLowerCase().startsWith("v") ? cur.substring(1) : cur;
+                String b = lv.toLowerCase().startsWith("v") ? lv.substring(1) : lv;
+                if (a.equals(b)) {
                     statusView.setText(getString(R.string.update_none, lv));
                 } else {
                     statusView.setText(getString(R.string.update_available, lv));
