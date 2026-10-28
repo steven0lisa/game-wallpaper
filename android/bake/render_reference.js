@@ -105,18 +105,18 @@ for (let y = Math.floor(viewTop / TILE) - 1; y <= Math.ceil((viewTop + viewH) / 
     else if (x === -1) bi = 32 + (((y % 4) + 4) % 4);
     else bi = Math.abs(x) % 4 + 4 * (Math.abs(y) % 4);
     const f = scene.frames[`EDG:0:${bi}:0`];
-    if (f) blit(f, X(x * TILE), Y(y * TILE), false, false);
+    if (f) blit(f, X(x * TILE), Y(y * TILE), false, false, S);
   }
 }
 // ---- 2. terrain ----
 for (const c of scene.terrain) {
   const f = scene.frames[`${c.def}:0:${c.i}:${c.steps > 1 ? 0 : 0}`];
-  if (f) blit(f, X(c.x * TILE), Y(c.y * TILE), (c.f & 1) !== 0, (c.f & 2) !== 0);
+  if (f) blit(f, X(c.x * TILE), Y(c.y * TILE), (c.f & 1) !== 0, (c.f & 2) !== 0, S);
 }
 // ---- 3. rivers ----
 for (const c of scene.rivers) {
   const f = scene.frames[`${c.def}:0:${c.i}:0`];
-  if (f) blit(f, X(c.x * TILE), Y(c.y * TILE), (c.f & 1) !== 0, (c.f & 2) !== 0);
+  if (f) blit(f, X(c.x * TILE), Y(c.y * TILE), (c.f & 1) !== 0, (c.f & 2) !== 0, S);
 }
 // ---- 4. roads ----
 const roadAt = new Map();
