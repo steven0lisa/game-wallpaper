@@ -373,23 +373,6 @@ for (let i = 0; i < A.data.length; i += 4) {
     if (!first) first = { x: (i / 4) % A.width, y: Math.floor(i / 4 / A.width) };
   }
 }
-// ---- inspect cells at the first-diff location ----
-(function () {
-  const tx = first ? X0 + Math.floor(first.x / 32) : -1; // world tile x
-  console.log('[inspect] patch-px', first.x, first.y, '-> world tile', tx, ' rows y=39/40/41');
-  for (const wy of [39, 40, 41]) {
-    const rc = scene.roads.find((c) => c.x === tx && c.y === wy);
-    const key = rc ? `${rc.def}:0:${rc.i}:0` : null;
-    const sf = key ? scene.frames[key] : null;
-    const bc = target.layers.roads.find((b) => b.x === tx && b.y === wy);
-    const bf = bc ? frames[bc.ref] : null;
-    console.log(`(${tx},${wy}) ref:`, rc ? `${rc.def} i=${rc.i} f=${rc.f & 3} frame=${key} -> ${sf ? JSON.stringify({ p: sf.p, x: sf.x, y: sf.y, w: sf.w, h: sf.h, ox: sf.ox, oy: sf.oy }) : 'MISSING'}` : 'no road',
-      '| cand:', bc ? `fid=${bc.ref} flip=${bc.flip} -> ${bf ? JSON.stringify({ page: bf.page, x: bf.x, y: bf.y, w: bf.w, h: bf.h, ox: bf.ox, oy: bf.oy }) : 'UNDEF'}` : 'no road');
-  }
-  // how many COBBRD frames does the DEF actually have?
-  const def = lib.def('COBBRD');
-  console.log('[COBBRD] block0 frames =', def && def.blocks[0] ? def.blocks[0].length : 'n/a');
-})();
 
 console.log('[draws] ref=' + drawsA.length + ' cand=' + drawsB.length);
 const ma = new Map(drawsA.map(d => [d.wx + ':' + d.wy + ':' + d.part, d]));
