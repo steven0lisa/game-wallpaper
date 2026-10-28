@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GameWallpaper</string>
+    <string name="wallpaper_description">A living Heroes of Might &amp; Magic III battle map.</string>
+
+    <!-- MainActivity -->
+    <string name="main_title">GameWallpaper</string>
+    <string name="btn_open_wallpaper">Set / Open wallpaper</string>
+    <string name="btn_about">About</string>
+    <string name="btn_update">Check for updates</string>
+    <string name="btn_pause">Pause wallpaper</string>
+    <string name="btn_resume">Resume wallpaper</string>
+    <string name="hint_first_run">Open the wallpaper picker, then choose “GameWallpaper”.\nNo setup needed — three battle maps are built in.</string>
+    <string name="wallpaper_active">Wallpaper service is running</string>
+    <string name="wallpaper_inactive">Wallpaper not set yet</string>
+    <string name="checking_update">Checking for updates…</string>
+    <string name="update_available">Update available: %1$s</string>
+    <string name="update_none">You are up to date (%1$s)</string>
+    <string name="update_failed">Update check failed (offline?)</string>
+
+    <!-- About -->
+    <string name="about_title">About</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_engine">Heroes of Might &amp; Magic III live wallpaper.\nMaps, sprites and animations are rendered from the classic game data format.</string>
+    <string name="about_credits">Based on VCMI and the h3lwp live wallpaper.\nGame assets are property of their respective owners and are not included.</string>
+    <string name="about_source">Source code</string>
+    <string name="about_feedback">Report an issue</string>
+    <string name="ok">OK</string>
+</resources>

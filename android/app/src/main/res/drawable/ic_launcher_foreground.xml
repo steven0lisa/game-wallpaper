@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Castle-on-hills silhouette; drawn from scratch (no HoMM3 assets). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- rolling ground -->
+    <path
+        android:fillColor="#2E6B4F"
+        android:pathData="M14,74 C30,66 46,72 60,70 C76,68 90,72 96,76 L96,86 L14,86 Z" />
+    <path
+        android:fillColor="#245740"
+        android:pathData="M14,80 C34,74 54,80 70,78 C82,77 92,80 96,82 L96,90 L14,90 Z" />
+
+    <!-- keep: three towers -->
+    <path
+        android:fillColor="#C9A45C"
+        android:pathData="M34,54 h10 v-6 h4 v6 h6 v-6 h4 v6 h10 v22 h-34 z" />
+    <path
+        android:fillColor="#C9A45C"
+        android:pathData="M34,54 h10 v-6 h4 v6 h6 v-6 h4 v6 h10 v22 h-34 z"
+        android:strokeColor="#8A6F3D"
+        android:strokeWidth="1.4" />
+    <!-- left tower -->
+    <path
+        android:fillColor="#B8934F"
+        android:pathData="M30,60 h10 v-8 h3 v8 h2 v18 h-15 z" />
+    <!-- right tower -->
+    <path
+        android:fillColor="#B8934F"
+        android:pathData="M64,60 h10 v-8 h3 v8 h2 v18 h-15 z" />
+
+    <!-- gate -->
+    <path
+        android:fillColor="#4A3B22"
+        android:pathData="M46,70 a5,5 0 0 1 10,0 v8 h-10 z" />
+
+    <!-- banner pole + pennant -->
+    <path
+        android:fillColor="#D9B45B"
+        android:pathData="M51,32 h2.4 v22 h-2.4 z" />
+    <path
+        android:fillColor="#C4453B"
+        android:pathData="M53.4,33 L64,37 L53.4,41 Z" />
+</vector>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GameWallpaper</string>
+    <string name="wallpaper_description">运行中的《魔法门之英雄无敌 III》战场地图。</string>
+
+    <string name="main_title">GameWallpaper</string>
+    <string name="btn_open_wallpaper">设置 / 打开壁纸</string>
+    <string name="btn_about">关于</string>
+    <string name="btn_update">检查更新</string>
+    <string name="btn_pause">暂停壁纸</string>
+    <string name="btn_resume">继续壁纸</string>
+    <string name="hint_first_run">打开壁纸选择器，然后选择「GameWallpaper」。\n无需任何设置，三张地图已内置。</string>
+    <string name="wallpaper_active">壁纸服务运行中</string>
+    <string name="wallpaper_inactive">尚未设置壁纸</string>
+    <string name="checking_update">正在检查更新…</string>
+    <string name="update_available">发现新版本：%1$s</string>
+    <string name="update_none">已是最新版本（%1$s）</string>
+    <string name="update_failed">检查更新失败（网络？）</string>
+
+    <string name="about_title">关于</string>
+    <string name="about_version">版本 %1$s</string>
+    <string name="about_engine">《魔法门之英雄无敌 III》动态壁纸。\n地图、精灵与动画均按原作数据格式实时渲染。</string>
+    <string name="about_credits">参考 VCMI 与 h3lwp 动态壁纸实现。\n游戏素材版权归其各自所有者，本应用不包含任何游戏素材。</string>
+    <string name="about_source">源代码</string>
+    <string name="about_feedback">提交反馈</string>
+    <string name="ok">好的</string>
+</resources>

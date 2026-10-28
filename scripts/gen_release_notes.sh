@@ -27,9 +27,11 @@ echo "### 📦 Other"
 log | grep -vE '^- (feat|add|support|fix)' || echo "- (none)"
 echo
 echo "---"
-echo "ℹ️ The dmg bundles 3 XL maps (auto-loaded when no maps folder is set). Sprite"
-echo "assets (H3sprite.lod, from your original game) are not included — on first"
-echo "launch use「Choose Data Folder…」to pick the game data dir (e.g. VCMI's)."
+echo "ℹ️ **Downloads**: GameWallpaper.dmg (macOS 13+) · GameWallpaper.apk (Android 8+)."
+echo "The dmg bundles 3 XL maps (auto-loaded when no maps folder is set). Sprite"
+echo "assets (H3sprite.lod, from your original game) are not included in the dmg —"
+echo "on first launch use「Choose Data Folder…」to pick the game data dir (e.g."
+echo "VCMI's). The Android APK is fully self-contained (3 maps baked in, zero setup)."
 echo "Unsigned build: if Gatekeeper blocks the first launch, right-click -> Open, or \`xattr -d com.apple.quarantine /Applications/GameWallpaper.app\`."
 if [ -n "$PREV" ]; then
     echo

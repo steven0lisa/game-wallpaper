@@ -28,7 +28,9 @@ adventure map. More game engines are on the roadmap (see
   (drop a folder and point the app to it).
 - **Gentle on your battery** — rendering pauses when the display sleeps and stops
   completely on battery power; the camera idles at 5 fps and only wakes up while
-  moving.
+  moving. (On Android it goes further: the wallpaper only redraws on 180 ms
+  sprite-animation boundaries ≈5.5 fps while dwelling and freezes completely
+  when the desktop isn't visible — see [docs/android.md](docs/android.md).)
 - **Make it yours** — zoom 1×–4×, dim the scene 0–60% at night, pause anytime.
   English and Chinese UI, following your system language.
 - **Map Viewer included** — explore the full map in your browser (pan, zoom,
@@ -36,9 +38,13 @@ adventure map. More game engines are on the roadmap (see
 
 ## 🚀 Getting Started
 
-**1. Download** the latest `GameWallpaper.dmg` from the
-[Releases page](https://github.com/steven0lisa/game-wallpaper/releases/latest),
-open it and drag **GameWallpaper** into **Applications**.
+**1. Download** from the
+[Releases page](https://github.com/steven0lisa/game-wallpaper/releases/latest):
+
+- **macOS**: `GameWallpaper.dmg` → drag **GameWallpaper** into **Applications**.
+- **Android**: `GameWallpaper.apk` (Android 8+) → install, then pick
+  **GameWallpaper** in the system wallpaper picker. Fully self-contained — three
+  maps are baked in, no setup screen, only Start/Pause + About + Check-for-updates.
 
 **2. Point it at your game assets** (one time). Launch the app — a 🎮 icon
 appears in the menu bar. On first launch, choose **Choose Data Folder…** and

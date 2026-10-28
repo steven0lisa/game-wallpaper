@@ -186,9 +186,11 @@ class AssetLibrary {
   }
 }
 
-function buildScene(h3m, library, level = 0) {
+// packer 可选：外部传入（Android 烘焙把多张地图打进同一图集做跨地图去重）；
+// 缺省每张地图各自独立图集（web 查看器的原行为）。返回值额外带 packer 便于连续调用复用。
+function buildScene(h3m, library, level = 0, packer = null) {
   const size = h3m.size;
-  const packer = new AtlasPacker(2048);
+  if (!packer) packer = new AtlasPacker(2048);
   const pack = (defName, block, index, step) => {
     const key = `${defName}:${block}:${index}:${step}`;
     if (packer.frames.has(key)) return key;
@@ -287,4 +289,4 @@ function buildScene(h3m, library, level = 0) {
 
 let objects_seq = 0;
 
-module.exports = { AssetLibrary, buildScene, borderFrameIndex, encodePng };
+module.exports = { AssetLibrary, buildScene, borderFrameIndex, encodePng, AtlasPacker };

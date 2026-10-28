@@ -1,0 +1,75 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'org.feichao.h3wallpaper'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'org.feichao.h3wallpaper'
+        minSdk 26
+        targetSdk 35
+        versionCode project.hasProperty('APP_VERSION_CODE')
+                ? APP_VERSION_CODE.toInteger() : 10000
+        versionName project.hasProperty('APP_VERSION_NAME')
+                ? APP_VERSION_NAME : '1.0.0-dev'
+        ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }
+    }
+
+    // CI signs with the secret keystore; locally build a debuggable unsigned apk
+    signingConfigs {
+        if (project.hasProperty('RELEASE_STORE_FILE')) {
+            release {
+                storeFile file(RELEASE_STORE_FILE)
+                storePassword RELEASE_STORE_PASSWORD
+                keyAlias RELEASE_KEY_ALIAS
+                keyPassword RELEASE_KEY_PASSWORD
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false          // no reflection to shrink; keeps build simple/fast
+            shrinkResources false
+            if (project.hasProperty('RELEASE_STORE_FILE')) {
+                signingConfig signingConfigs.release
+            }
+            // assets (scenes.bin + atlas) are already binary-optimized; no crunch
+        }
+        debug {
+            // dev builds read the same assets; scene asset folder is shared
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packagingOptions {
+        resources.excludes = ['META-INF/**', 'DebugProbesKt.bin', '**/*.proto']
+    }
+
+    // bake outputs land here (scripts/build_android.sh runs the node baker first)
+    sourceSets {
+        main.assets.srcDirs = ['src/main/assets']
+    }
+}
+
+// Clean stale atlas pages so a rebuild never ships leftover pages from a bigger bake.
+tasks.register('verifySceneAssets') {
+    doLast {
+        def assetsDir = file('src/main/assets/scenes')
+        if (!file("$assetsDir/scenes.bin").exists()) {
+            throw new GradleException(
+                "missing $assetsDir/scenes.bin — run scripts/build_android.sh " +
+                "(bakes the 3 bundled maps from Resources/BundledMaps/*.h3m.enc)")
+        }
+        def pages = fileTree(assetsDir) { include 'atlas-*.png' }.files.size()
+        println "[android] scene assets: ${pages} atlas pages"
+    }
+}
+preBuild.dependsOn 'verifySceneAssets'

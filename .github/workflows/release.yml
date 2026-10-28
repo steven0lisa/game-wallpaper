@@ -1,8 +1,8 @@
 name: Release
 
 # Versioning: git tag v{major}.{minor} (e.g. v1.0) is a release; each tag maps 1:1
-# to a Release. Pushing a tag -> universal build -> dmg (bundled maps decrypted
-# from a secret; sprite assets stay bring-your-own) -> auto-generated notes -> GitHub Release.
+# to a Release. Pushing a tag builds the macOS dmg AND the Android APK; both are
+# attached to the same GitHub Release with generated notes.
 on:
   push:
     tags: ['v*']
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   release-dmg:
-    name: Build dmg & publish release
+    name: Build dmg
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -36,15 +36,96 @@ jobs:
           # Password for the encrypted bundled-map copies (without it the build degrades to a mapless package)
           BUNDLED_MAPS_PASS: ${{ secrets.BUNDLED_MAPS_PASS }}
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: build/GameWallpaper.dmg
+          if-no-files-found: error
+
+  release-apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tag format (v{major}.{minor})
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+$ ]] || {
+            echo "ERROR: tag must be v{major}.{minor} (e.g. v1.0); got: $TAG" >&2
+            exit 1
+          }
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Decrypt baked scene bundle (bundled maps + rendered atlases)
+        env:
+          BUNDLED_MAPS_PASS: ${{ secrets.BUNDLED_MAPS_PASS }}
+        run: |
+          # AndroidScenes.enc holds the AES-encrypted baked scene data; the
+          # plaintext copy only exists at build time and inside the APK.
+          ./scripts/android_scenes.sh unpack
+
+      - name: Build signed APK
+        env:
+          VERSION_NAME: ${{ github.ref_name }}
+          RELEASE_STORE_FILE: ${{ github.workspace }}/.keystore
+          RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$RELEASE_STORE_FILE"
+          GRADLE=$HOME/gradle-dist/bin/gradle
+          # CI has no preinstalled gradle 8.7 binary; use the wrapper (dist auto-downloads)
+          ( cd android && ./gradlew --no-daemon -q assembleRelease \
+              -PAPP_VERSION_NAME="$VERSION_NAME" \
+              -PRELEASE_STORE_FILE="$RELEASE_STORE_FILE" \
+              -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+              -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+              -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD" )
+          mkdir -p build
+          cp android/app/build/outputs/apk/release/app-release.apk build/GameWallpaper.apk
+          ls -la build/GameWallpaper.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: build/GameWallpaper.apk
+          if-no-files-found: error
+
+  publish:
+    name: Publish release (dmg + apk)
+    needs: [release-dmg, release-apk]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dmg
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+          path: dist
+
       - name: Generate release notes
         run: |
           chmod +x scripts/gen_release_notes.sh
-          scripts/gen_release_notes.sh "${GITHUB_REF_NAME}" > build/release-notes.md
-          cat build/release-notes.md
+          scripts/gen_release_notes.sh "${GITHUB_REF_NAME}" > dist/release-notes.md
+          cat dist/release-notes.md
 
-      - name: Upload dmg to release
+      - name: Attach dmg + apk to the release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: build/release-notes.md
-          files: build/GameWallpaper.dmg
+          body_path: dist/release-notes.md
+          files: |
+            dist/GameWallpaper.dmg
+            dist/GameWallpaper.apk
           fail_on_unmatched_files: true

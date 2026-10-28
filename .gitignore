@@ -28,6 +28,13 @@ base.apk_*/
 extracted/
 raw-assets/
 assets/
+# Android 烘焙出的明文场景包（授权码加密副本在 Resources/AndroidScenes.enc）
+android/app/build/
+android/build/
+android/out/
+android/local.properties
+android/.gradle/
+android/app/src/main/assets/
 
 # ---- Windows 版本已移除 ----
 windows/
@@ -37,3 +44,7 @@ windows/
 /tmp/
 __pycache__/
 .v2c/
+
+# agent harness scratch
+out/
+.video_agent/

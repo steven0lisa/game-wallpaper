@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Wallpaper picker thumbnail: dark battlefield vignette with a castle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="480dp"
+    android:viewportWidth="320"
+    android:viewportHeight="480">
+
+    <path android:fillColor="#14171D" android:pathData="M0,0 h320 v480 h-320 z" />
+
+    <!-- water band -->
+    <path android:fillColor="#1D3B66" android:pathData="M0,300 h320 v180 h-320 z" />
+    <!-- grass band -->
+    <path android:fillColor="#2E6B4F" android:pathData="M0,270 C60,258 130,276 190,268 C250,260 296,272 320,266 L320,306 L0,306 Z" />
+
+    <!-- castle -->
+    <path android:fillColor="#C9A45C"
+        android:pathData="M126,196 h20 v-14 h8 v14 h12 v-14 h8 v14 h20 v74 h-68 z" />
+    <path android:fillColor="#B8934F" android:pathData="M112,224 h18 v-18 h6 v18 h4 v46 h-28 z" />
+    <path android:fillColor="#B8934F" android:pathData="M206,224 h18 v-18 h6 v18 h4 v46 h-28 z" />
+    <path android:fillColor="#4A3B22" android:pathData="M148,250 a10,10 0 0 1 20,0 v20 h-20 z" />
+    <path android:fillColor="#D9B45B" android:pathData="M157,156 h4 v42 h-4 z" />
+    <path android:fillColor="#C4453B" android:pathData="M161,158 L184,166 L161,174 Z" />
+</vector>
