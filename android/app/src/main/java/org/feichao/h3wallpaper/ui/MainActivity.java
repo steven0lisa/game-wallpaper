@@ -174,6 +174,15 @@ public class MainActivity extends Activity {
         pauseBtn.setVisibility(set ? View.VISIBLE : View.GONE);
     }
 
+    private boolean windowFocused = true;
+    private boolean guideShowing;
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        windowFocused = hasFocus;
+    }
+
     private void openWallpaperPicker() {
         // MIUI ignores ACTION_CHANGE_LIVE_WALLPAPER with the component extra;
         // the generic system chooser is the path that works everywhere.
@@ -181,20 +190,36 @@ public class MainActivity extends Activity {
             Log.i(TAG, "picker: starting ACTION_LIVE_WALLPAPER_CHOOSER");
             startActivity(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER));
             Log.i(TAG, "picker: chooser started ok");
-            return;
         } catch (Exception e) {
             Log.w(TAG, "picker: chooser failed", e);
+            showPickerGuide();
+            return;
         }
-        try {
-            Log.i(TAG, "picker: starting CHANGE_LIVE_WALLPAPER");
-            Intent i = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
-            i.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                    new ComponentName(this, H3WallpaperService.class));
-            startActivity(i);
-        } catch (Exception e) {
-            Log.w(TAG, "picker: all paths failed", e);
-            Toast.makeText(this, R.string.wallpaper_inactive, Toast.LENGTH_LONG).show();
-        }
+        // MIUI may silently swallow the start (后台弹出界面 permission): if our
+        // window never lost focus, nothing opened — guide the user to grant it.
+        getWindow().getDecorView().postDelayed(() -> {
+            if (!isFinishing() && windowFocused && !guideShowing) {
+                guideShowing = true;
+                Log.w(TAG, "picker: nothing opened — MIUI popup permission blocked it");
+                showPickerGuide();
+            }
+        }, 1000);
+    }
+
+    /** MIUI swallows the chooser when 后台弹出界面 is denied: explain + deep-link. */
+    private void showPickerGuide() {
+        String body = getString(R.string.picker_guide_body);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.picker_guide_title)
+                .setMessage(body)
+                .setPositiveButton(R.string.picker_guide_go, (dlg, which) -> {
+                    try {
+                        startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.fromParts("package", getPackageName(), null)));
+                    } catch (Exception ignored) {}
+                })
+                .setNegativeButton(R.string.ok, null)
+                .show();
     }
 
     private void togglePause() {

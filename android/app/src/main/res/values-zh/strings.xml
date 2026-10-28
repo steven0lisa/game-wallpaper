@@ -24,4 +24,7 @@
     <string name="about_source">源代码</string>
     <string name="about_feedback">提交反馈</string>
     <string name="ok">好的</string>
+    <string name="picker_guide_title">需要授权</string>
+    <string name="picker_guide_body">MIUI 拦截了壁纸列表的弹出。\n\n请在权限设置中允许 GameWallpaper 的「后台弹出界面」，然后再点一次「设置 / 打开壁纸」。\n\n也可以手动设置：桌面空白处长按 → 壁纸。</string>
+    <string name="picker_guide_go">去授权</string>
 </resources>

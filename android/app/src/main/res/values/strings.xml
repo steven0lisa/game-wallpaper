@@ -26,4 +26,7 @@
     <string name="about_source">Source code</string>
     <string name="about_feedback">Report an issue</string>
     <string name="ok">OK</string>
+    <string name="picker_guide_title">Permission needed</string>
+    <string name="picker_guide_body">MIUI blocked the wallpaper list from opening.\n\nAllow "Display pop-up windows while running in the background" for GameWallpaper, then tap the button again.\n\nOr set the wallpaper manually: long-press the home screen → Wallpaper.</string>
+    <string name="picker_guide_go">Open settings</string>
 </resources>
