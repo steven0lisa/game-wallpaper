@@ -51,6 +51,7 @@ public class H3WallpaperService extends WallpaperService {
     }
 
     final class H3Engine extends Engine {
+        static H3Engine lastInstance; // debug receiver hook (single-engine in practice)
         private RenderThread thread;
         private boolean visible;
         private final SurfaceHolder.Callback cb = new SurfaceHolder.Callback() {
@@ -76,6 +77,7 @@ public class H3WallpaperService extends WallpaperService {
         @Override
         public void onCreate(SurfaceHolder surfaceHolder) {
             super.onCreate(surfaceHolder);
+            lastInstance = this;
             setTouchEventsEnabled(false); // wallpaper never eats input
             surfaceHolder.addCallback(cb);
 
@@ -95,8 +97,14 @@ public class H3WallpaperService extends WallpaperService {
                     new IntentFilter("org.feichao.h3wallpaper.PAUSE_CHANGED"), rxFlags);
         }
 
+        /** Debug camera pin: {cx, cy, zoom} or null to release. */
+        void setDebugCam(float[] cam) {
+            if (thread != null) thread.setDebugCam(cam);
+        }
+
         @Override
         public void onDestroy() {
+            lastInstance = null;
             try { unregisterReceiver(pauseReceiver); } catch (Exception ignored) {}
             if (thread != null) { thread.shutdown(); thread = null; }
             getSurfaceHolder().removeCallback(cb);

@@ -195,6 +195,7 @@ public final class Renderer {
     public float centerX() { return viewLeft + viewW / 2; }
     public float centerY() { return viewTop + viewH / 2; }
     public void setZoomPref(float z) { zoomPref = z; fit(); }
+    public float zoomNow() { return zoom; }
 
     public void centerOn(float cx, float cy) {
         viewLeft = cx - viewW / 2;

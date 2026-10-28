@@ -56,6 +56,7 @@ public final class RenderThread extends Thread {
     private long animOriginMs;       // animation clock origin (shifted by pauses)
     private int lastStep = -1;
     private long lastLoopMs;
+    private long logCamAt;
     private long nextMapSwitchMs;
     private float lastFps = -1;
 
@@ -123,6 +124,18 @@ public final class RenderThread extends Thread {
     }
 
     public Camera camera() { return camera; }
+
+    private float[] debugCam; // {cx, cy, zoom} — pins the camera (verification only)
+
+    public void setDebugCam(float[] cam) {
+        synchronized (lock) {
+            debugCam = cam;
+            if (cam != null && cam.length >= 3 && !Float.isNaN(cam[2])) renderer.setZoomPref(cam[2]);
+            camera.setFrozen(cam != null);
+            invalidate = true;
+            lock.notifyAll();
+        }
+    }
 
     // ------------------------------------------------------------------ loop
     @Override
@@ -214,7 +227,16 @@ public final class RenderThread extends Thread {
                 double dt = Math.min(0.25, (now - lastLoopMs) / 1000.0);
                 lastLoopMs = now;
                 camera.update(dt, renderer.worldSizePx(), renderer.viewW(), renderer.viewH());
+                if (debugCam != null) {
+                    camera.cx = debugCam[0];
+                    camera.cy = debugCam[1];
+                }
                 renderer.centerOn(camera.cx, camera.cy);
+                if (logCamAt <= now) {
+                    logCamAt = now + 30_000;
+                    Log.i(TAG, "cam center=(" + Math.round(camera.cx) + "," + Math.round(camera.cy)
+                            + ") zoom=" + renderer.zoomNow());
+                }
 
                 // animation clock
                 int step = (int) ((now - animOriginMs) / FRAME_MS);

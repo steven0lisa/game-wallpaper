@@ -43,7 +43,7 @@ const keySafe = encodeURIComponent;
 // 生成代码指纹：服务端所有参与场景构建的源文件
 function computeServerCodeHash() {
   const crypto = require('crypto');
-  const files = ['Scene.js', 'DefFile.js', 'H3mFile.js', 'LodFile.js', 'Reader.js', 'Server.js'];
+  const files = ['engines/heroes3/Scene.js', 'engines/heroes3/DefFile.js', 'engines/heroes3/H3mFile.js', 'engines/heroes3/LodFile.js', 'engines/heroes3/Reader.js', 'Server.js'];
   const h = crypto.createHash('md5');
   for (const f of files) {
     const st = fs.statSync(path.join(__dirname, f));
