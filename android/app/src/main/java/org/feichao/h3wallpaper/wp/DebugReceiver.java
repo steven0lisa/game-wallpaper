@@ -24,8 +24,9 @@ public class DebugReceiver extends BroadcastReceiver {
         float cx = intent.getFloatExtra("cx", Float.NaN);
         float cy = intent.getFloatExtra("cy", Float.NaN);
         float zoom = intent.getFloatExtra("zoom", Float.NaN);
+        int map = intent.getIntExtra("map", -1);
         if (Float.isNaN(cx) || Float.isNaN(cy)) return;
-        engine.setDebugCam(new float[]{cx, cy, zoom});
-        Log.i(TAG, "debug cam pinned to " + cx + "," + cy + " zoom=" + zoom);
+        engine.setDebugCam(new float[]{cx, cy, zoom, map});
+        Log.i(TAG, "debug cam pinned to " + cx + "," + cy + " zoom=" + zoom + " map=" + map);
     }
 }

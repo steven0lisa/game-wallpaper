@@ -21,6 +21,8 @@ import android.widget.Toast;
 import org.feichao.h3wallpaper.R;
 import org.feichao.h3wallpaper.wp.H3WallpaperService;
 
+import static org.feichao.h3wallpaper.wp.H3WallpaperService.prefs;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -126,6 +128,28 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // adb debug hook: pin the wallpaper camera for 1:1 comparison with the web viewer
+        //   am start -n org.feichao.h3wallpaper/.ui.MainActivity \
+        //       --ef debugCamX 496 --ef debugCamY 3152 [--ef debugCamZoom 3.5] [--ei debugCamMap 2]
+        //   am start -n org.feichao.h3wallpaper/.ui.MainActivity --ei debugCamClear 1   # release the pin
+        SharedPreferences pf = H3WallpaperService.prefs(this);
+        SharedPreferences.Editor ed = pf.edit();
+        boolean touched = false;
+        if (getIntent().hasExtra("debugCamX")) {
+            ed.putFloat("debugCamX", getIntent().getFloatExtra("debugCamX", Float.NaN))
+              .putFloat("debugCamY", getIntent().getFloatExtra("debugCamY", Float.NaN))
+              .putFloat("debugCamZoom", getIntent().getFloatExtra("debugCamZoom", 3.5f))
+              .putInt("debugCamMap", getIntent().getIntExtra("debugCamMap", -1));
+            touched = true;
+        }
+        if (getIntent().hasExtra("debugCamClear")) {
+            ed.remove("debugCamX").remove("debugCamY").remove("debugCamZoom").remove("debugCamMap");
+            touched = true;
+        }
+        if (touched) {
+            ed.commit();
+            sendBroadcast(new Intent("org.feichao.h3wallpaper.PAUSE_CHANGED"));
+        }
         refreshStatus();
     }
 

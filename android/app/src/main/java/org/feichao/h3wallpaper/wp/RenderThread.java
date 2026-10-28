@@ -125,16 +125,32 @@ public final class RenderThread extends Thread {
 
     public Camera camera() { return camera; }
 
-    private float[] debugCam; // {cx, cy, zoom} — pins the camera (verification only)
+    private float[] debugCam; // {cx, cy, zoom, mapIdx} — pins the camera (verification only)
 
+    /** Any thread: stage a camera pin; GL work happens on the render thread. */
     public void setDebugCam(float[] cam) {
         synchronized (lock) {
             debugCam = cam;
-            if (cam != null && cam.length >= 3 && !Float.isNaN(cam[2])) renderer.setZoomPref(cam[2]);
-            camera.setFrozen(cam != null);
             invalidate = true;
+            lastStep = -1;
             lock.notifyAll();
         }
+    }
+
+    /** GL thread: apply a staged camera pin (map load needs the GL context). */
+    private void applyDebugCam() {
+        if (debugCam == null) return;
+        float[] cam = debugCam;
+        if (cam.length >= 3 && !Float.isNaN(cam[2])) renderer.setZoomPref(cam[2]);
+        if (cam.length >= 4 && cam[3] >= 0 && cam[3] != renderer.mapIndex()) {
+            renderer.loadScene(host.scene(), (int) cam[3]);
+            camera.reset(renderer.worldSizePx(), renderer.viewW(), renderer.viewH(), 180);
+        }
+        camera.cx = cam[0];
+        camera.cy = cam[1];
+        renderer.centerOn(camera.cx, camera.cy);
+        lastStep = -1;
+        Log.i(TAG, "debug cam applied: " + cam[0] + "," + cam[1] + " map=" + (int) cam[3]);
     }
 
     // ------------------------------------------------------------------ loop
@@ -222,6 +238,9 @@ public final class RenderThread extends Thread {
                     nextMapSwitchMs = now + MAP_SWITCH_MS;
                     invalidate = true;
                 }
+
+                // staged debug camera pin (may switch maps; must run on GL thread)
+                if (debugCam != null) applyDebugCam();
 
                 // camera advance
                 double dt = Math.min(0.25, (now - lastLoopMs) / 1000.0);

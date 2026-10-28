@@ -67,10 +67,21 @@ public class H3WallpaperService extends WallpaperService {
             }
         };
 
-        // wake rendering when the app toggles pause
+        // wake rendering on pause toggle; hot-reload debug camera prefs
         private final BroadcastReceiver pauseReceiver = new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent i) {
-                if (thread != null) thread.invalidate();
+                if (thread == null) return;
+                float dx = prefs(c).getFloat("debugCamX", Float.NaN);
+                float dy = prefs(c).getFloat("debugCamY", Float.NaN);
+                if (!Float.isNaN(dx) && !Float.isNaN(dy)) {
+                    float[] cam = {dx, dy,
+                            prefs(c).getFloat("debugCamZoom", 3.5f),
+                            prefs(c).getInt("debugCamMap", -1)};
+                    thread.setDebugCam(cam);
+                    Log.i(TAG, "debug cam hot-reloaded: " + dx + "," + dy + " map=" + ((int) cam[3]));
+                } else {
+                    thread.setDebugCam(null); // release the pin, resume roaming
+                }
             }
         };
 
@@ -89,6 +100,15 @@ public class H3WallpaperService extends WallpaperService {
                     return visible && !isPaused(H3WallpaperService.this);
                 }
             }, getAssets());
+            // debug camera pin (written via `adb shell run-as`), read fresh at engine create
+            SharedPreferences pf = prefs(H3WallpaperService.this);
+            float dx = pf.getFloat("debugCamX", Float.NaN);
+            float dy = pf.getFloat("debugCamY", Float.NaN);
+            if (!Float.isNaN(dx) && !Float.isNaN(dy)) {
+                thread.setDebugCam(new float[]{dx, dy,
+                        pf.getFloat("debugCamZoom", 3.5f), pf.getInt("debugCamMap", -1)});
+                Log.i(TAG, "debug cam from prefs: " + dx + "," + dy + " map=" + pf.getInt("debugCamMap", -1));
+            }
             thread.start();
 
             int rxFlags = android.os.Build.VERSION.SDK_INT >= 33
