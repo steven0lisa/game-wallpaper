@@ -49,7 +49,7 @@ public final class Renderer {
 
     // view state (world px)
     private float viewLeft, viewTop, viewW, viewH;
-    private float zoomPref = 3.5f; // screen px per world px (density ≈ original's DPI scale)
+    private float zoomPref = 2.5f; // screen px per world px — smaller = map zoomed out
     private float zoom = 3.5f;
     private int screenW, screenH;
     private int animStep;
