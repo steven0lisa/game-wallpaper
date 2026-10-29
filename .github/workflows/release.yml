@@ -78,8 +78,8 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          # versionCode must outrank any dev build (10000) and grow every release
-          VERSION_CODE=$((10000 + RUN_NUMBER))
+          # versionCode must outrank any dev build (≤10000) and grow every release
+          VERSION_CODE=$((20000 + RUN_NUMBER))
           echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$RELEASE_STORE_FILE"
           GRADLE=$HOME/gradle-dist/bin/gradle
           # CI has no preinstalled gradle 8.7 binary; use the wrapper (dist auto-downloads)
