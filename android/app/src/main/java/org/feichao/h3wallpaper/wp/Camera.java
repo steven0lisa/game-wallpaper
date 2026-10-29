@@ -32,11 +32,39 @@ public final class Camera {
     /** True while interpolating (renderer needs higher fps). */
     public boolean isMoving() { return t > 0; }
 
-    public void jumpToRandomPoint(float mapSizePx, float viewW, float viewH) {
+    /** Probability that a random-move opportunity actually moves (<30% per spec). */
+    public static final float MOVE_PROBABILITY = 0.25f;
+    /** Max jump distance = one screenful (small hop, keeps the view contextual). */
+    private static final float MAX_JUMP_FACTOR = 1.0f;
+
+    /**
+     * Small hop around the current center: target lands within one screen
+     * radius of the current view (clamped inside the map, never showing the
+     * black void outside). Returns true when the dice roll made the move —
+     * callers gate every random-move opportunity through this so only a
+     * minority of events disturb the user (and cost a glide).
+     */
+    public boolean maybeJumpNearby(float mapSizePx, float viewW, float viewH) {
+        if (Math.random() >= MOVE_PROBABILITY) return false;
         ox = cx; oy = cy;
-        pickTarget(mapSizePx, viewW, viewH);
+        B b = bounds(mapSizePx, viewW, viewH);
+        float minR = Math.min(viewW, viewH) * MIN_JUMP_FRACTION;
+        float maxR = Math.max(viewW, viewH) * MAX_JUMP_FACTOR;
+        for (int i = 0; i < 8; i++) {
+            double ang = Math.random() * 2 * Math.PI;
+            double r = minR + Math.random() * (maxR - minR);
+            float px = clamp(cx + (float) (Math.cos(ang) * r), b.loX, b.hiX);
+            float py = clamp(cy + (float) (Math.sin(ang) * r), b.loY, b.hiY);
+            float dx = px - cx, dy = py - cy;
+            if (dx * dx + dy * dy >= minR * minR) { tx = px; ty = py; t = 1; return true; }
+        }
+        tx = clamp(cx, b.loX, b.hiX); ty = clamp(cy, b.loY, b.hiY);
         t = 1;
-        switchRemaining = switchInterval;
+        return true;
+    }
+
+    private static float clamp(float v, float lo, float hi) {
+        return v < lo ? lo : (v > hi ? hi : v);
     }
 
     private static class B { float loX, hiX, loY, hiY; }
@@ -50,20 +78,6 @@ public final class Camera {
         if (b.loX > b.hiX) { b.loX = mapSizePx / 2; b.hiX = b.loX; }
         if (b.loY > b.hiY) { b.loY = mapSizePx / 2; b.hiY = b.loY; }
         return b;
-    }
-
-    private void pickTarget(float mapSizePx, float viewW, float viewH) {
-        B b = bounds(mapSizePx, viewW, viewH);
-        float minDist = Math.min(viewW, viewH) * MIN_JUMP_FRACTION;
-        for (int i = 0; i < 8; i++) {
-            float px = b.loX + (float) Math.random() * (b.hiX - b.loX);
-            float py = b.loY + (float) Math.random() * (b.hiY - b.loY);
-            float dx = px - cx, dy = py - cy;
-            if (dx * dx + dy * dy >= minDist * minDist) { tx = px; ty = py; t = 1; return; }
-        }
-        tx = b.loX + (float) Math.random() * (b.hiX - b.loX);
-        ty = b.loY + (float) Math.random() * (b.hiY - b.loY);
-        t = 1;
     }
 
     public void update(double dt, float mapSizePx, float viewW, float viewH) {
@@ -80,7 +94,8 @@ public final class Camera {
         }
         switchRemaining -= dt;
         if (switchRemaining <= 0) {
-            pickTarget(mapSizePx, viewW, viewH);
+            // dwell hop: same probability gate — most ticks just reset the timer
+            maybeJumpNearby(mapSizePx, viewW, viewH);
             switchRemaining = switchInterval;
         }
     }

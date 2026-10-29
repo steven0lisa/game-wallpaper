@@ -231,11 +231,13 @@ public final class RenderThread extends Thread {
                     else animOriginMs = now - ((lastStep < 0 ? 0 : (long) lastStep * FRAME_MS));
                     if (debugCam == null) {
                         camera.setFrozen(false);
-                        // 解锁 → 相机跳到随机新视野（jumpToRandomPoint 的目标被
-                        // centerBounds 夹在地图内，视口不会看到地图外的黑区域）
+                        // 解锁 → 25% 概率小幅跳近邻视野（幅度≈一屏、centerBounds 夹持
+                        // 不露黑区域）；75% 保持原位，减少滋扰与滑动耗电
                         if (renderer.hasMap()) {
-                            camera.jumpToRandomPoint(renderer.worldSizePx(), renderer.viewW(), renderer.viewH());
-                            Log.i(TAG, "unlock — jump to random view");
+                            if (camera.maybeJumpNearby(renderer.worldSizePx(), renderer.viewW(), renderer.viewH()))
+                                Log.i(TAG, "unlock — small hop (25% gate)");
+                            else
+                                Log.i(TAG, "unlock — stay in place (75% gate)");
                         }
                     }
                 }
@@ -263,7 +265,7 @@ public final class RenderThread extends Thread {
                     int next = (renderer.mapIndex() + 1) % renderer.scene().mapCount;
                     renderer.loadScene(renderer.scene(), next);
                     camera.reset(renderer.worldSizePx(), renderer.viewW(), renderer.viewH(), 180);
-                    camera.jumpToRandomPoint(renderer.worldSizePx(), renderer.viewW(), renderer.viewH());
+                    camera.maybeJumpNearby(renderer.worldSizePx(), renderer.viewW(), renderer.viewH());
                     renderer.centerOn(camera.cx, camera.cy);
                     nextMapSwitchMs = now + MAP_SWITCH_MS;
                     invalidate = true;
