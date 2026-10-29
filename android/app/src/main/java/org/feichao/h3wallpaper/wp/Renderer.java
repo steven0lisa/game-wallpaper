@@ -285,7 +285,10 @@ public final class Renderer {
         float cellDy = (y * TILE - viewTop) * zoom;
         // own road: canvas rows [0,16) land on the cell's BOTTOM half (viewer: dy=Y(y)+ts/2)
         float destDy = cellDy + (fromAbove ? 0 : (TILE / 2) * zoom);
-        float kx = (TILE * zoom) / canvasW, ky = (TILE * zoom) / canvasH;
+        // dest rect is ONE half-cell (16 world px tall) — ky must be zoom,
+        // not TILE*zoom/canvasH (=2*zoom, which stretched every road half 2x
+        // and made halves overlap across the seam).
+        float kx = (TILE * zoom) / canvasW, ky = ((TILE / 2) * zoom) / canvasH;
         float px = cellDx + (ix0 - canvasX) * kx;
         float py = destDy + (iy0 - canvasY) * ky;
 
