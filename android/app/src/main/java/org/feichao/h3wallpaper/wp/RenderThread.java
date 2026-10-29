@@ -202,6 +202,15 @@ public final class RenderThread extends Thread {
                 }
                 should = running && pendingSurface != null && host.shouldRender();
                 if (!should) {
+                    // 锁屏/被遮挡且非钉定态：25% 概率掷下一张地图（隐藏期间完成加载，解锁即见新图）
+                    if (prevVisible && debugCam == null && host.screenOff() && host.scene() != null) {
+                        SceneData d = host.scene();
+                        if (d.mapCount > 1 && rng.nextFloat() < 0.25f) {
+                            pendingMapIdx = rng.nextInt(d.mapCount);
+                            Log.i(TAG, "screen off — roll next map idx=" + pendingMapIdx);
+                        }
+                    }
+                    prevVisible = false;
                     try { lock.wait(); } catch (InterruptedException ignored) {}
                     continue;
                 }
@@ -220,12 +229,14 @@ public final class RenderThread extends Thread {
                 if (!prevVisible) {
                     if (animOriginMs == 0) animOriginMs = now;
                     else animOriginMs = now - ((lastStep < 0 ? 0 : (long) lastStep * FRAME_MS));
-                    camera.setFrozen(false);
-                    // 解锁 → 相机跳到随机新视野（jumpToRandomPoint 的目标被
-                    // centerBounds 夹在地图内，视口不会看到地图外的黑区域）
-                    if (renderer.hasMap()) {
-                        camera.jumpToRandomPoint(renderer.worldSizePx(), renderer.viewW(), renderer.viewH());
-                        Log.i(TAG, "unlock — jump to random view");
+                    if (debugCam == null) {
+                        camera.setFrozen(false);
+                        // 解锁 → 相机跳到随机新视野（jumpToRandomPoint 的目标被
+                        // centerBounds 夹在地图内，视口不会看到地图外的黑区域）
+                        if (renderer.hasMap()) {
+                            camera.jumpToRandomPoint(renderer.worldSizePx(), renderer.viewW(), renderer.viewH());
+                            Log.i(TAG, "unlock — jump to random view");
+                        }
                     }
                 }
                 prevVisible = visible;
