@@ -212,7 +212,10 @@ public final class Renderer {
         java.nio.ShortBuffer sb = java.nio.ShortBuffer.allocate(w * h);
         for (int p : px) {
             int a = (p >>> 24) & 0xff, r = (p >>> 16) & 0xff, g = (p >>> 8) & 0xff, b = p & 0xff;
-            sb.put((short) (((a >>> 4) << 12) | ((r >>> 4) << 8) | ((g >>> 4) << 4) | (b >>> 4)));
+            // GL_UNSIGNED_SHORT_4_4_4_4 packs R in the top nibble (same
+            // convention as 5_6_5's R15-11), then G, B, A. Packing A first
+            // swaps R/B at sample time — blue water rendered blood red.
+            sb.put((short) (((r >>> 4) << 12) | ((g >>> 4) << 8) | ((b >>> 4) << 4) | (a >>> 4)));
         }
         sb.position(0);
         int[] tex = new int[1];
