@@ -45,8 +45,11 @@ public class H3WallpaperService extends WallpaperService {
         return c.getSharedPreferences(PREFS, MODE_PRIVATE);
     }
 
+    private android.os.PowerManager powerManager;
+
     @Override
     public Engine onCreateEngine() {
+        powerManager = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
         return new H3Engine();
     }
 
@@ -98,6 +101,13 @@ public class H3WallpaperService extends WallpaperService {
                 }
                 @Override public boolean shouldRender() {
                     return visible && !isPaused(H3WallpaperService.this);
+                }
+                @Override public boolean screenOff() {
+                    return visible && !powerManager.isInteractive();
+                }
+                @Override public int mapCount() {
+                    SceneData d = H3WallpaperService.scene(H3WallpaperService.this);
+                    return d == null ? 0 : d.mapCount;
                 }
             }, getAssets());
             // debug camera pin (written via `adb shell run-as`), read fresh at engine create

@@ -37,6 +37,10 @@ public final class RenderThread extends Thread {
         SceneData scene();
         /** true → keep rendering (visible & not paused); false → sleep at 0fps. */
         boolean shouldRender();
+        /** true = screen off / locked (判定「锁屏换图」用). */
+        boolean screenOff();
+        /** bundled map count. */
+        int mapCount();
     }
 
     private final Renderer renderer;
@@ -56,6 +60,8 @@ public final class RenderThread extends Thread {
     private long animOriginMs;       // animation clock origin (shifted by pauses)
     private int lastStep = -1;
     private long lastLoopMs;
+    private volatile int pendingMapIdx = -1;
+    private final java.util.Random rng = new java.util.Random();
     private long logCamAt;
     private long nextMapSwitchMs;
     private float lastFps = -1;
@@ -215,8 +221,21 @@ public final class RenderThread extends Thread {
                     if (animOriginMs == 0) animOriginMs = now;
                     else animOriginMs = now - ((lastStep < 0 ? 0 : (long) lastStep * FRAME_MS));
                     camera.setFrozen(false);
+                    // 解锁 → 相机跳到随机新视野（jumpToRandomPoint 的目标被
+                    // centerBounds 夹在地图内，视口不会看到地图外的黑区域）
+                    if (renderer.hasMap()) {
+                        camera.jumpToRandomPoint(renderer.worldSizePx(), renderer.viewW(), renderer.viewH());
+                        Log.i(TAG, "unlock — jump to random view");
+                    }
                 }
                 prevVisible = visible;
+                // 应用锁屏期间掷中的换图（数据级加载，无需 EGL）
+                if (pendingMapIdx >= 0 && pendingMapIdx != renderer.mapIndex() && renderer.hasMap()) {
+                    renderer.loadScene(host.scene(), pendingMapIdx);
+                    camera.reset(renderer.worldSizePx(), renderer.viewW(), renderer.viewH(), 180);
+                    Log.i(TAG, "map switched to idx=" + pendingMapIdx);
+                }
+                pendingMapIdx = -1;
 
                 // scene load (host may provide lazily)
                 if (!renderer.hasMap()) {
