@@ -128,17 +128,22 @@ public final class Renderer {
     }
 
     // ------------------------------------------------------------ map / textures
-    public void loadMap(SceneData data, int idx) {
-        // free the previous map's textures (context may already be gone -> just drop refs)
-        if (pageCount > 0 && pageTex.length > 0 && EGL14.eglGetCurrentContext() != null
-                && EGL14.eglGetCurrentContext() != EGL14.EGL_NO_CONTEXT) {
-            GLES20.glDeleteTextures(pageTex.length, pageTex, 0);
-        }
+    /**
+     * Bind a scene bundle at map index (data level). The previous map's layer
+     * arrays are released inside SceneData. Returns false when the map segment
+     * is corrupt so callers can skip to another map instead of crashing.
+     */
+    public boolean loadMap(SceneData data, int idx) {
+        if (data == null) return false;
+        if (!data.loadMap(idx)) return false;
         sc = data;
         mapIndex = idx;
         pageBase = data.mapPageBase[idx];
         pageCount = data.mapPageCount[idx];
-        pageTex = new int[pageCount];
+        if (pageTex.length != pageCount) {
+            // page count is the shared-atlas size; grow lazily on first upload
+            pageTex = new int[pageCount];
+        }
 
         int size = data.mapSize[idx];
         roadIndex = new int[size * size];
@@ -148,42 +153,82 @@ public final class Renderer {
 
         fit();
         Log.i(TAG, "loadMap " + data.mapName[idx] + " pages=" + pageCount);
+        return true;
     }
 
     /** Alias used by RenderThread: (re)bind a scene bundle at map index. */
-    public void loadScene(SceneData data, int idx) { loadMap(data, idx); }
+    public boolean loadScene(SceneData data, int idx) { return loadMap(data, idx); }
     public SceneData scene() { return sc; }
     public int mapIndex() { return mapIndex; }
 
-    /** Upload atlas pages for the current map (GL thread, after initGl). */
+    /** GL textures alive per atlas page (0 = not uploaded in this context). */
+
+    /**
+     * Sync atlas textures with what the CURRENT map needs: upload missing
+     * pages, delete pages no map needs any more. Map rotation therefore frees
+     * the old map's GPU memory instead of accumulating every atlas page.
+     */
     private void uploadAtlas() {
         if (sc == null || pageCount == 0) return;
-        for (int p : pageTex) if (p != 0) return; // already uploaded in this context
-        GLES20.glGenTextures(pageCount, pageTex, 0);
+        if (pageTex.length != pageCount) pageTex = new int[pageCount];
+        boolean[] need = new boolean[pageCount];
+        // every frame referenced by the current map's sets → its atlas page
+        for (int s = 0; s < sc.setCount; s++) {
+            short[] ids = sc.setIds[s];
+            for (int id : ids) {
+                if (id == SceneData.NO_FRAME || id >= sc.frameCount) continue;
+                int p = sc.fPage[id] & 0xff;
+                if (p < pageCount) need[p] = true;
+            }
+        }
+        // border set + road frames are covered via setIds; frame table is shared.
+        for (int p = 0; p < pageCount; p++) {
+            if (need[p] && pageTex[p] == 0) uploadPage(p);
+            else if (!need[p] && pageTex[p] != 0) {
+                GLES20.glDeleteTextures(1, pageTex, p);
+                pageTex[p] = 0;
+            }
+        }
+    }
+
+    private void uploadPage(int localPage) {
+        int gid = pageBase + localPage;
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inScaled = false;
         o.inPreferredConfig = Bitmap.Config.ARGB_8888;
-        for (int i = 0; i < pageCount; i++) {
-            int gid = pageBase + i;
-            Bitmap bmp;
-            try (java.io.InputStream in = assets.open("scenes/atlas-" + gid + ".png")) {
-                bmp = BitmapFactory.decodeStream(in, null, o);
-            } catch (Exception e) {
-                throw new RuntimeException("atlas-" + gid, e);
-            }
-            if (bmp == null) throw new RuntimeException("decode atlas-" + gid);
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, pageTex[i]);
-            // GL_LINEAR + 图集 1px 边缘复制（烘焙端同款）：与 mac 一致的柔和边缘，
-            // 且复制边保证帧边界不渗色
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0);
-            bmp.recycle();
+        Bitmap bmp;
+        try (java.io.InputStream in = assets.open("scenes/atlas-" + gid + ".png")) {
+            bmp = BitmapFactory.decodeStream(in, null, o);
+        } catch (Exception e) {
+            throw new RuntimeException("atlas-" + gid, e);
         }
+        if (bmp == null) throw new RuntimeException("decode atlas-" + gid);
+        // RGBA4444 upload (h3lwp parity): half the VRAM of 8888 — 16 shared
+        // pages = 128MB instead of 256MB — indistinguishable for pixel art.
+        int w = bmp.getWidth(), h = bmp.getHeight();
+        int[] px = new int[w * h];
+        bmp.getPixels(px, 0, w, 0, 0, w, h);
+        bmp.recycle();
+        java.nio.ShortBuffer sb = java.nio.ShortBuffer.allocate(w * h);
+        for (int p : px) {
+            int a = (p >>> 24) & 0xff, r = (p >>> 16) & 0xff, g = (p >>> 8) & 0xff, b = p & 0xff;
+            sb.put((short) (((a >>> 4) << 12) | ((r >>> 4) << 8) | ((g >>> 4) << 4) | (b >>> 4)));
+        }
+        sb.position(0);
+        int[] tex = new int[1];
+        GLES20.glGenTextures(1, tex, 0);
+        pageTex[localPage] = tex[0];
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex[0]);
+        // GL_LINEAR + 图集 1px 边缘复制（烘焙端同款）：与 mac 一致的柔和边缘，
+        // 且复制边保证帧边界不渗色
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, w, h, 0,
+                GLES20.GL_RGBA, GLES20.GL_UNSIGNED_SHORT_4_4_4_4, sb);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
-        Log.i(TAG, "uploaded " + pageCount + " atlas pages (epoch " + glEpoch + ")");
+        Log.i(TAG, "uploaded atlas page " + gid + " (4444)");
     }
 
     // ------------------------------------------------------------------ access

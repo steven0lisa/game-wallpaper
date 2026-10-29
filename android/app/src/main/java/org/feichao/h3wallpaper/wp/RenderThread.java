@@ -144,6 +144,25 @@ public final class RenderThread extends Thread {
     }
 
     /** GL thread: apply a staged camera pin (map load needs the GL context). */
+    /**
+     * Switch to the requested map, skipping over corrupt map segments
+     * (SceneData.loadMap returns false for them). Falls back through the
+     * remaining maps; keeps the current map if every candidate is broken.
+     */
+    private boolean switchMapSkippingBroken(int idx) {
+        SceneData sc = host.scene();
+        if (sc == null) return false;
+        if (renderer.loadScene(sc, idx)) return true;
+        for (int k = 1; k < sc.mapCount; k++) {
+            int alt = (idx + k) % sc.mapCount;
+            if (renderer.loadScene(sc, alt)) {
+                Log.w(TAG, "map " + idx + " broken — fell back to " + alt);
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void applyDebugCam() {
         if (debugCam == null) return;
         float[] cam = debugCam;
@@ -244,26 +263,26 @@ public final class RenderThread extends Thread {
                 prevVisible = visible;
                 // 应用锁屏期间掷中的换图（数据级加载，无需 EGL）
                 if (pendingMapIdx >= 0 && pendingMapIdx != renderer.mapIndex() && renderer.hasMap()) {
-                    renderer.loadScene(host.scene(), pendingMapIdx);
-                    camera.reset(renderer.worldSizePx(), renderer.viewW(), renderer.viewH(), 180);
-                    Log.i(TAG, "map switched to idx=" + pendingMapIdx);
+                    switchMapSkippingBroken(pendingMapIdx);
+                    Log.i(TAG, "map switched to idx=" + renderer.mapIndex());
                 }
                 pendingMapIdx = -1;
 
                 // scene load (host may provide lazily)
                 if (!renderer.hasMap()) {
                     SceneData sc = host.scene();
-                    renderer.loadScene(sc, 0);
-                    camera.reset(renderer.worldSizePx(), renderer.viewW(), renderer.viewH(), 180);
-                    renderer.centerOn(camera.cx, camera.cy);
-                    nextMapSwitchMs = now + MAP_SWITCH_MS;
-                    invalidate = true;
+                    if (sc != null && switchMapSkippingBroken(0)) {
+                        camera.reset(renderer.worldSizePx(), renderer.viewW(), renderer.viewH(), 180);
+                        renderer.centerOn(camera.cx, camera.cy);
+                        nextMapSwitchMs = now + MAP_SWITCH_MS;
+                        invalidate = true;
+                    }
                 }
 
                 // map rotation (mac parity: a fresh view every 15 min)
-                if (now >= nextMapSwitchMs && renderer.scene().mapCount > 1) {
+                if (renderer.hasMap() && now >= nextMapSwitchMs && renderer.scene().mapCount > 1) {
                     int next = (renderer.mapIndex() + 1) % renderer.scene().mapCount;
-                    renderer.loadScene(renderer.scene(), next);
+                    switchMapSkippingBroken(next);
                     camera.reset(renderer.worldSizePx(), renderer.viewW(), renderer.viewH(), 180);
                     camera.maybeJumpNearby(renderer.worldSizePx(), renderer.viewW(), renderer.viewH());
                     renderer.centerOn(camera.cx, camera.cy);

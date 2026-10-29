@@ -5,11 +5,18 @@ import android.util.Log;
 
 import org.feichao.h3wallpaper.util.BinReader;
 
+import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * Parsed scenes.bin bundle: per-map layers + a global frame table.
- * Memory layout is struct-of-arrays (primitive ints) for cheap per-frame iteration.
+ * Parsed scenes.bin bundle (v2): global frame table + per-map layer segments
+ * behind an offset table. Memory layout is struct-of-arrays (primitive ints)
+ * for cheap per-frame iteration.
+ *
+ * v2 (2026-10-29): 127 maps share one atlas, so the bundle stores map segments
+ * at absolute offsets. Only the CURRENT map's layer arrays are materialized —
+ * {@link #loadMap} parses one segment and drops the previous map's arrays, so
+ * resident heap stays ~one map regardless of how many maps ship in the APK.
  *
  * One "set" = one logical sprite (terrain view / river view / object def) whose
  * entries are its animation or palette-rotation frames. Cell -> setId, frame index
@@ -18,6 +25,11 @@ import java.io.InputStream;
 public final class SceneData {
     private static final String TAG = "H3WP";
     public static final short NO_FRAME = (short) 0xffff;
+
+    // ---- bundle source (whole bin resident; segments parsed on demand) ----
+    private byte[] raw;
+    private int[] mapOffsets;
+    private int curMap = -1;
 
     // ---- global frame table (struct of arrays) ----
     public int frameCount;
@@ -36,7 +48,8 @@ public final class SceneData {
     public int[] mapSize;
     public int[] mapPageBase, mapPageCount;
     public int[] mapBorderSet;
-    // per-map layer cells (struct-of-arrays per map): x,y,setId,flip
+    // per-map layer cells — only the current map's slot is filled; loadMap()
+    // drops the previous slot so heap tracks a single map.
     public int[] tCount;  public int[][] tX, tY, tSid; public byte[][] tFlip;
     public int[] rCount;  public int[][] rX, rY, rSid; public byte[][] rFlip;
     public int[] dCount;  public int[][] dX, dY, dFid; public byte[][] dFlip;
@@ -45,23 +58,25 @@ public final class SceneData {
 
     public int atlasPageSize;
 
-    /** Load + parse the bundle from assets ("scenes.bin"). */
+    /** Load + parse the bundle index from assets ("scenes/scenes.bin"). */
     public static SceneData load(AssetManager assets) throws Exception {
         byte[] raw;
         try (InputStream in = assets.open("scenes/scenes.bin")) {
             raw = BinReader.readAll(in);
         }
         SceneData s = new SceneData();
-        s.parse(raw);
+        s.parseIndex(raw);
         return s;
     }
 
-    private void parse(byte[] raw) throws Exception {
+    private void parseIndex(byte[] raw) throws Exception {
+        this.raw = raw;
         BinReader r = new BinReader(raw);
-        if (r.u8() != 'H' || r.u8() != '3' || r.u8() != 'B' || r.u8() != '1')
-            throw new java.io.IOException("bad scenes.bin magic");
+        int b0 = r.u8(), b1 = r.u8(), b2 = r.u8(), b3 = r.u8();
+        if (b0 != 'H' || b1 != '3' || b2 != 'B' || b3 != '2')
+            throw new IOException("bad scenes.bin magic");
         int version = r.u16();
-        if (version != 1) throw new java.io.IOException("unsupported scenes.bin v" + version);
+        if (version != 2) throw new IOException("unsupported scenes.bin v" + version);
         mapCount = r.u16();
         atlasPageSize = r.u16();
         r.u16(); // reserved
@@ -91,6 +106,9 @@ public final class SceneData {
             setIds[i] = ids;
         }
 
+        mapOffsets = new int[mapCount];
+        for (int i = 0; i < mapCount; i++) mapOffsets[i] = r.u32();
+
         mapName = new String[mapCount];
         mapSize = new int[mapCount];
         mapPageBase = new int[mapCount];
@@ -104,42 +122,78 @@ public final class SceneData {
         oX = new int[mapCount][]; oY = new int[mapCount][]; oSid = new int[mapCount][];
         oPhase = new int[mapCount][]; oFw = new short[mapCount][]; oFh = new short[mapCount][];
 
-        for (int m = 0; m < mapCount; m++) {
-            mapName[m] = r.str();
-            mapSize[m] = r.u16();
-            mapPageBase[m] = r.u16();
-            mapPageCount[m] = r.u16();
-            mapBorderSet[m] = r.u16();
-
-            int n = r.u32();
-            tCount[m] = n;
-            tX[m] = new int[n]; tY[m] = new int[n]; tSid[m] = new int[n]; tFlip[m] = new byte[n];
-            for (int i = 0; i < n; i++) {
-                tX[m][i] = r.u16(); tY[m][i] = r.u16(); tSid[m][i] = r.u16(); tFlip[m][i] = (byte) r.u8();
-            }
-            n = r.u32();
-            rCount[m] = n;
-            rX[m] = new int[n]; rY[m] = new int[n]; rSid[m] = new int[n]; rFlip[m] = new byte[n];
-            for (int i = 0; i < n; i++) {
-                rX[m][i] = r.u16(); rY[m][i] = r.u16(); rSid[m][i] = r.u16(); rFlip[m][i] = (byte) r.u8();
-            }
-            n = r.u32();
-            dCount[m] = n;
-            dX[m] = new int[n]; dY[m] = new int[n]; dFid[m] = new int[n]; dFlip[m] = new byte[n];
-            for (int i = 0; i < n; i++) {
-                dX[m][i] = r.u16(); dY[m][i] = r.u16(); dFid[m][i] = r.u16(); dFlip[m][i] = (byte) r.u8();
-            }
-            n = r.u32();
-            oCount[m] = n;
-            oX[m] = new int[n]; oY[m] = new int[n]; oSid[m] = new int[n];
-            oPhase[m] = new int[n]; oFw[m] = new short[n]; oFh[m] = new short[n];
-            for (int i = 0; i < n; i++) {
-                oX[m][i] = r.u16(); oY[m][i] = r.u16(); oSid[m][i] = r.u16();
-                oPhase[m][i] = r.u32();
-                oFw[m][i] = (short) r.u16(); oFh[m][i] = (short) r.u16();
-            }
-        }
-        Log.i(TAG, "scenes.bin parsed: maps=" + mapCount + " frames=" + frameCount
+        Log.i(TAG, "scenes.bin index parsed: maps=" + mapCount + " frames=" + frameCount
                 + " sets=" + setCount + " bytes=" + raw.length);
     }
+
+    /**
+     * Materialize one map's layer arrays and drop the previous map's.
+     * Returns false (leaving the bundle usable) when the segment is corrupt,
+     * so a bad map can be skipped instead of crashing the wallpaper.
+     */
+    public boolean loadMap(int idx) {
+        if (idx == curMap) return true;
+        if (idx < 0 || idx >= mapCount) return false;
+        releaseMap();
+        try {
+            BinReader r = new BinReader(raw);
+            r.seek(mapOffsets[idx]);
+            mapName[idx] = r.str();
+            mapSize[idx] = r.u16();
+            mapPageBase[idx] = r.u16();
+            mapPageCount[idx] = r.u16();
+            mapBorderSet[idx] = r.u16();
+
+            int n = r.u32();
+            if (n < 0 || n > 4_000_000) throw new IOException("bad terrain count " + n);
+            tCount[idx] = n;
+            tX[idx] = new int[n]; tY[idx] = new int[n]; tSid[idx] = new int[n]; tFlip[idx] = new byte[n];
+            for (int i = 0; i < n; i++) {
+                tX[idx][i] = r.u16(); tY[idx][i] = r.u16(); tSid[idx][i] = r.u16(); tFlip[idx][i] = (byte) r.u8();
+            }
+            n = r.u32();
+            if (n < 0 || n > 4_000_000) throw new IOException("bad rivers count " + n);
+            rCount[idx] = n;
+            rX[idx] = new int[n]; rY[idx] = new int[n]; rSid[idx] = new int[n]; rFlip[idx] = new byte[n];
+            for (int i = 0; i < n; i++) {
+                rX[idx][i] = r.u16(); rY[idx][i] = r.u16(); rSid[idx][i] = r.u16(); rFlip[idx][i] = (byte) r.u8();
+            }
+            n = r.u32();
+            if (n < 0 || n > 4_000_000) throw new IOException("bad roads count " + n);
+            dCount[idx] = n;
+            dX[idx] = new int[n]; dY[idx] = new int[n]; dFid[idx] = new int[n]; dFlip[idx] = new byte[n];
+            for (int i = 0; i < n; i++) {
+                dX[idx][i] = r.u16(); dY[idx][i] = r.u16(); dFid[idx][i] = r.u16(); dFlip[idx][i] = (byte) r.u8();
+            }
+            n = r.u32();
+            if (n < 0 || n > 4_000_000) throw new IOException("bad objects count " + n);
+            oCount[idx] = n;
+            oX[idx] = new int[n]; oY[idx] = new int[n]; oSid[idx] = new int[n];
+            oPhase[idx] = new int[n]; oFw[idx] = new short[n]; oFh[idx] = new short[n];
+            for (int i = 0; i < n; i++) {
+                oX[idx][i] = r.u16(); oY[idx][i] = r.u16(); oSid[idx][i] = r.u16();
+                oPhase[idx][i] = r.u32();
+                oFw[idx][i] = (short) r.u16(); oFh[idx][i] = (short) r.u16();
+            }
+            curMap = idx;
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "map segment " + idx + " corrupt — skipping: " + e);
+            releaseMap();
+            return false;
+        }
+    }
+
+    /** Drop the current map's layer arrays (map rotation / memory relief). */
+    public void releaseMap() {
+        if (curMap < 0) return;
+        tX[curMap] = null; tY[curMap] = null; tSid[curMap] = null; tFlip[curMap] = null;
+        rX[curMap] = null; rY[curMap] = null; rSid[curMap] = null; rFlip[curMap] = null;
+        dX[curMap] = null; dY[curMap] = null; dFid[curMap] = null; dFlip[curMap] = null;
+        oX[curMap] = null; oY[curMap] = null; oSid[curMap] = null; oPhase[curMap] = null;
+        oFw[curMap] = null; oFh[curMap] = null;
+        curMap = -1;
+    }
+
+    public int currentMap() { return curMap; }
 }

@@ -80,7 +80,8 @@ class R {
 }
 const raw = fs.readFileSync(BIN);
 const r = new R(raw);
-if (r.b.toString('latin1', 0, 4) !== 'H3B1') throw new Error('bad bin magic');
+const magic = r.b.toString('latin1', 0, 4);
+if (magic !== 'H3B1' && magic !== 'H3B2') throw new Error('bad bin magic: ' + magic);
 r.p = 4;
 r.u16(); // version
 const mapCount = r.u16(), pageSize = r.u16();
@@ -93,6 +94,7 @@ for (let i = 0; i < frameCount; i++) {
 const setCount = r.u32();
 const sets = [];
 for (let i = 0; i < setCount; i++) { const n = r.u16(); const ids = []; for (let j = 0; j < n; j++) ids.push(r.u16()); sets.push(ids); }
+if (magic === 'H3B2') { for (let i = 0; i < mapCount; i++) r.u32(); } // v2: map segment offsets (not needed here)
 let target = null;
 for (let m = 0; m < mapCount; m++) {
   const name = r.str(); const size = r.u16(); const pageBase = r.u16(); const pageCount = r.u16(); const borderSet = r.u16();
