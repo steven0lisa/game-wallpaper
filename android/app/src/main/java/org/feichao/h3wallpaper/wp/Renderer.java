@@ -173,10 +173,10 @@ public final class Renderer {
             }
             if (bmp == null) throw new RuntimeException("decode atlas-" + gid);
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, pageTex[i]);
-            // NEAREST: pixel-art parity with the web viewer (imageSmoothingEnabled=false)
-            // and no atlas bleed at frame boundaries (LINEAR smears neighbouring frames).
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST);
+            // GL_LINEAR + 图集 1px 边缘复制（烘焙端同款）：与 mac 一致的柔和边缘，
+            // 且复制边保证帧边界不渗色
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
             GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0);

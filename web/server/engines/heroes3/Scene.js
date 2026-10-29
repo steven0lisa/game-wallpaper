@@ -128,15 +128,33 @@ class AtlasPacker {
     pg.rowH = Math.max(pg.rowH, h);
     return spot;
   }
+  // pad=1：每帧外扩 1px 边缘复制（mac AtlasBuilder 同款）。线性采样在帧边界
+  // 读取的是复制出来的边缘像素，相邻图集帧不会渗色，道路/地形边缘保留柔和的
+  // 原作过渡观感。frames 记录的仍是数据矩形（pad 外圈只是采样保护边）。
+  static PAD = 1;
   blit(key, rgba, w, h, offsetX, offsetY, fullCanvasW, fullCanvasH) {
-    if (w > this.pageSize || h > this.pageSize) return;
+    const pad = AtlasPacker.PAD;
+    if (w + pad * 2 > this.pageSize || h + pad * 2 > this.pageSize) return;
     if (this.frames.has(key)) return;
-    const spot = this.place(w, h);
+    const spot = this.place(w + pad * 2, h + pad * 2);
     const pg = this.pages[spot.page];
+    const px = spot.x + pad, py = spot.y + pad;
     for (let row = 0; row < h; row++) {
-      rgba.copy(pg.buf, ((spot.y + row) * this.pageSize + spot.x) * 4, row * w * 4, (row + 1) * w * 4);
+      rgba.copy(pg.buf, ((py + row) * this.pageSize + px) * 4, row * w * 4, (row + 1) * w * 4);
     }
-    this.frames.set(key, { page: spot.page, x: spot.x, y: spot.y, w, h,
+    // 1px 边缘复制：上下左右各复制一行/列，四角复制角像素
+    for (let r = 0; r < h; r++) {
+      const rowBase = ((py + r) * this.pageSize + px) * 4;
+      const leftSrc = (py + r) * this.pageSize * 4 + px * 4;
+      pg.buf.copy(pg.buf, rowBase - 4, leftSrc, leftSrc + 4);
+      const rightSrc = (py + r) * this.pageSize * 4 + (px + w - 1) * 4;
+      pg.buf.copy(pg.buf, rowBase + w * 4, rightSrc, rightSrc + 4);
+    }
+    pg.buf.copy(pg.buf, (spot.y * this.pageSize + px) * 4,            // 上边复制首行
+                (py * this.pageSize + px) * 4, (py * this.pageSize + px + w) * 4);
+    pg.buf.copy(pg.buf, ((py + h) * this.pageSize + px) * 4,          // 下边复制末行
+                ((py + h - 1) * this.pageSize + px) * 4, ((py + h - 1) * this.pageSize + px + w) * 4);
+    this.frames.set(key, { page: spot.page, x: px, y: py, w, h,
                            ox: offsetX, oy: offsetY,
                            fw: fullCanvasW, fh: fullCanvasH });
   }
