@@ -256,6 +256,20 @@ ribbons along roads, coastlines or tile seams**: that is a half-tile
 offset, flip-axis or crop-math bug (§5/§9) no matter how small the
 overall percentage.
 
+**Data sources** — what you need depends on what you are testing:
+
+- **Renderer testing** (the main use): `benchmarks/data/bench-scenes.zip`
+  is a pre-baked scene bundle (scenes.bin v2 + atlas pages) for the three
+  benchmark maps. Read it (layout is in the bake.js header and §6) and
+  render from it directly — **no copyrighted game files required**. The
+  goldens were produced from this exact data, so a correct renderer
+  reproduces them modulo random objects.
+- **Parser testing**: you need real game data you provide yourself —
+  `H3sprite.lod` from an owned HoMM3 installation and the three map
+  files from its Maps folder. Copyrighted assets are never distributed
+  with this repo. Any of your own maps work too if you compare against
+  h3lwp or VCMI output instead of these goldens.
+
 ## 9. Top-10 pitfall speed run
 
 1. Flip bits: bit0 = H, bit1 = V (per 2-bit field in `flags`).

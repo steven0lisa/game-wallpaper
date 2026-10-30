@@ -2,6 +2,11 @@
   "name": "h3map-skill benchmark suite",
   "description": "Golden renders a ported renderer must reproduce. Element coverage: coastlines, roads (junctions/diagonals), foreground/background occlusion, creatures, ocean, lava palette animation, snow terrain.",
   "reference_engine": "macOS CLI: GameWallpaper --snapshot (Sources/Heroes3Engine, this repo)",
+  "data_source": {
+    "renderer_testing": "data/bench-scenes.zip — pre-baked scene bundle (scenes.bin v2 + atlas pages) for the three benchmark maps. NO copyrighted game files needed: implement the scene-bin reader (layout documented in SKILL.md §4/§6 and android/bake/bake.js header) and render from this bundle directly.",
+    "parser_testing": "requires real game data you provide yourself: H3sprite.lod from an owned HoMM3 installation, plus the three map files (Back For Revenge / Serpents Treasure / The Mandate of Heaven) from the game's Maps folder. Copyrighted game assets are never distributed with this repo.",
+    "golden_reproducibility": "goldens were rendered from the same bundle's semantics via the mac engine; rendering data/bench-scenes.zip through your renderer and comparing to golden/ is the full pipeline check minus asset decoding."
+  },
   "how_to_run": "Render each case with YOUR renderer at the exact map/center/zoom/size/time_ms below, then: python3 compare.py your.png golden/<id>.png --out diff.png",
   "coordinates": {
     "center": "normalized to map size: world_px = center * map_size * 32",
