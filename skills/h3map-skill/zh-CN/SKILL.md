@@ -187,6 +187,33 @@ dest = (ix0 - canvasX, iy0 - canvasY) 按 k 缩放          # 翻转时采样镜
    只有随机物件可以不同。
 5. **海岸/路口放大审查**：截图或美术出货前 2 倍放大检查海岸线与路口。
 
+### 8.1 黄金基准套件（`benchmarks/`）
+
+`benchmarks/` 目录内置六张由本仓库 macOS CLI 生成的黄金渲染图，
+渲染参数见 `benchmarks/manifest.json`。元素覆盖：
+
+| 用例 | 覆盖 |
+|---|---|
+| `st_coast_roads` | 海岸线、海洋、道路网、船、农田物件 |
+| `st_junction_fg_bg` | 道路斜弯/路口、前后景遮挡（怪物压路） |
+| `bfr_crossroads` | 道路十字路口（半格拆分）、生物、建筑纵深 |
+| `bfr_snow_coast` | 雪地地形、雪地海岸、城镇/英雄锚定、道路 |
+| `bfr_lava_coast` | 熔岩调色板动画（时序敏感）、悬崖、道路 |
+| `moh_inland` | 混合地形、海岸、城镇精灵、树下道路 |
+
+每个用例用 manifest 里的 `map / center / zoom / size / time_ms` 在你的
+渲染器上出图（`time_ms` 必须一致——水面/熔岩的调色板动画帧依赖时钟），
+然后比对：
+
+```
+python3 benchmarks/compare.py your_render.png benchmarks/golden/<id>.png --out diff.png
+```
+
+判定：**PASS** 差异 < 3.2%，**WARN** < 8%（看热图自查），**FAIL** ≥ 8%。
+随机物件（怪物/英雄变体）每次运行都会变——热图里散落的色块即使渲染器
+正确也会出现。**绝不允许**出现的是沿道路、海岸、瓦片缝呈**连续带状**的
+差异：那是半格偏移、翻转轴或裁剪数学 bug（§5/§9），无论整体百分比多小。
+
 ## 9. 十大坑速览
 
 1. 翻转位：bit0 = 水平，bit1 = 垂直（`flags` 内每个 2 位域）。

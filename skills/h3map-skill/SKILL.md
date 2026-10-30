@@ -225,6 +225,37 @@ never show the void). Animate at 180 ms steps; glides use smoothstep.
 5. **Coast/road zoom audit**: 2× magnify coastlines and junctions before
    shipping screenshots or art.
 
+### 8.1 Golden benchmark suite (`benchmarks/`)
+
+The `benchmarks/` directory ships six golden renders produced by this
+repo's macOS CLI, with the exact render parameters in
+`benchmarks/manifest.json`. Element coverage:
+
+| case | covers |
+|---|---|
+| `st_coast_roads` | coastline, ocean, road network, ships, farmland |
+| `st_junction_fg_bg` | road diagonals/junctions, fg/bg occlusion (creatures over roads) |
+| `bfr_crossroads` | road crossroads (half-tile split), creatures, buildings depth |
+| `bfr_snow_coast` | snow terrain, snow coast, town/hero anchoring, roads |
+| `bfr_lava_coast` | lava palette animation (timing-sensitive), cliffs, roads |
+| `moh_inland` | mixed terrain, coast, town sprite, roads under trees |
+
+Run every case through your renderer with the manifest's
+`map / center / zoom / size / time_ms` (keep `time_ms` identical — the
+palette-animated water/lava frames depend on it), then compare:
+
+```
+python3 benchmarks/compare.py your_render.png benchmarks/golden/<id>.png --out diff.png
+```
+
+Verdicts: **PASS** < 3.2% diff, **WARN** < 8% (inspect the heat map),
+**FAIL** ≥ 8%. Random object materialization (monster/hero variants)
+differs per run — scattered blobs in the heat map are expected even for
+a correct renderer. What must never appear is diff forming **continuous
+ribbons along roads, coastlines or tile seams**: that is a half-tile
+offset, flip-axis or crop-math bug (§5/§9) no matter how small the
+overall percentage.
+
 ## 9. Top-10 pitfall speed run
 
 1. Flip bits: bit0 = H, bit1 = V (per 2-bit field in `flags`).

@@ -1,0 +1,91 @@
+{
+  "name": "h3map-skill benchmark suite",
+  "description": "Golden renders a ported renderer must reproduce. Element coverage: coastlines, roads (junctions/diagonals), foreground/background occlusion, creatures, ocean, lava palette animation, snow terrain.",
+  "reference_engine": "macOS CLI: GameWallpaper --snapshot (Sources/Heroes3Engine, this repo)",
+  "how_to_run": "Render each case with YOUR renderer at the exact map/center/zoom/size/time_ms below, then: python3 compare.py your.png golden/<id>.png --out diff.png",
+  "coordinates": {
+    "center": "normalized to map size: world_px = center * map_size * 32",
+    "zoom": "screen pixels per world pixel",
+    "time_ms": "animation clock — palette-animated water/lava frames depend on it; keep identical or everything diffs"
+  },
+  "comparison": {
+    "tool": "compare.py",
+    "pass": "diff < 3.2%",
+    "warn": "diff < 8% — inspect the heat map; scattered blobs are random-object materialization (expected), ribbons along roads/coasts are bugs",
+    "fail": "diff >= 8% or ribbon-shaped diff (see SKILL.md §5/§9 for the usual causes)"
+  },
+  "cases": [
+    {
+      "id": "st_coast_roads",
+      "golden": "golden/st_coast_roads.png",
+      "map": "Serpents Treasure.h3m",
+      "map_size": 144,
+      "center": [0.38, 0.18],
+      "zoom": 0.7,
+      "size": [800, 520],
+      "time_ms": 1000,
+      "covers": ["coastline", "ocean", "road network", "ships", "farmland objects", "mixed terrain"],
+      "verify": "shore water/sand transition smooth and un-stepped; road bands continuous across tile borders; objects paint over roads"
+    },
+    {
+      "id": "st_junction_fg_bg",
+      "golden": "golden/st_junction_fg_bg.png",
+      "map": "Serpents Treasure.h3m",
+      "map_size": 144,
+      "center": [0.4056, 0.1403],
+      "zoom": 1.5,
+      "size": [800, 520],
+      "time_ms": 1000,
+      "covers": ["road diagonals", "road junctions", "foreground occlusion (trees/creatures over roads)", "coast"],
+      "verify": "diagonal road halves connect at seams; the creature standing on the road occludes it (painter order)"
+    },
+    {
+      "id": "bfr_crossroads",
+      "golden": "golden/bfr_crossroads.png",
+      "map": "Back For Revenge.h3m",
+      "map_size": 144,
+      "center": [0.1076, 0.684],
+      "zoom": 1.5,
+      "size": [800, 520],
+      "time_ms": 1000,
+      "covers": ["road crossroads (half-tile split)", "creatures", "buildings (fg/bg depth)", "obelisk/treasure objects"],
+      "verify": "crossroad halves align; big buildings occlude ground behind them; animated creature frames at time 1000ms"
+    },
+    {
+      "id": "bfr_snow_coast",
+      "golden": "golden/bfr_snow_coast.png",
+      "map": "Back For Revenge.h3m",
+      "map_size": 144,
+      "center": [0.82, 0.12],
+      "zoom": 1.5,
+      "size": [800, 520],
+      "time_ms": 1000,
+      "covers": ["snow terrain", "snow coast", "town/castle sprite", "hero sprite", "roads"],
+      "verify": "snow/sand/water triple transition; castle and hero anchored bottom-right on their tiles"
+    },
+    {
+      "id": "bfr_lava_coast",
+      "golden": "golden/bfr_lava_coast.png",
+      "map": "Back For Revenge.h3m",
+      "map_size": 144,
+      "center": [0.52, 0.42],
+      "zoom": 1.1,
+      "size": [800, 520],
+      "time_ms": 1000,
+      "covers": ["lava terrain (LAVATL palette animation)", "rock cliffs", "roads", "creature variety"],
+      "verify": "lava palette-rotation frame matches the golden AT TIME 1000ms exactly (this is the animation-timing test)"
+    },
+    {
+      "id": "moh_inland",
+      "golden": "golden/moh_inland.png",
+      "map": "The Mandate of Heaven.h3m",
+      "map_size": 144,
+      "center": [0.5, 0.45],
+      "zoom": 1.0,
+      "size": [800, 520],
+      "time_ms": 1000,
+      "covers": ["mixed inland terrain", "coast", "town sprite", "road network", "object variety"],
+      "verify": "town sprite over ground/roads (depth order); coast smooth; roads unbroken under trees"
+    }
+  ]
+}
