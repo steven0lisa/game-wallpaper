@@ -55,6 +55,9 @@ public final class RenderThread extends Thread {
     private Surface pendingSurface;
     private boolean surfaceDirty, exit, running, invalidate;
     private int surfW = 1, surfH = 1;
+    /** Size the renderer last fit to — surface resizes in place on rotation
+     *  (no destroy/create), so the loop itself must notice dimension changes. */
+    private int appliedW = -1, appliedH = -1;
     private float brightness;
 
     private long animOriginMs;       // animation clock origin (shifted by pauses)
@@ -203,7 +206,6 @@ public final class RenderThread extends Thread {
                             if (!EGL14.eglMakeCurrent(display, eglSurface, eglSurface, context))
                                 throw new RuntimeException("eglMakeCurrent(new surface)");
                         }
-                        renderer.setViewport(surfW, surfH);
                         invalidate = true;
                         lastStep = -1;
                         surfaceDirty = false;
@@ -241,6 +243,18 @@ public final class RenderThread extends Thread {
             }
 
             try {
+                // Apply surface size changes (first attach, resize, rotation —
+                // tablets rescale the wallpaper window in place, no recreate).
+                if (appliedW != surfW || appliedH != surfH) {
+                    renderer.setViewport(surfW, surfH);
+                    appliedW = surfW;
+                    appliedH = surfH;
+                    invalidate = true;
+                    lastStep = -1;
+                    if (renderer.hasMap())
+                        camera.reclamp(renderer.worldSizePx(), renderer.viewW(), renderer.viewH());
+                }
+
                 long now = SystemClock.uptimeMillis();
 
                 // pause boundary: shift the animation clock so resume does not jump
@@ -381,7 +395,6 @@ public final class RenderThread extends Thread {
             throw new RuntimeException("eglMakeCurrent");
         EGL14.eglSwapInterval(display, 0); // self-paced; never block on vsync
         renderer.initGl();
-        renderer.setViewport(surfW, surfH);
         Log.i(TAG, "EGL ready " + surfW + "x" + surfH);
     }
 

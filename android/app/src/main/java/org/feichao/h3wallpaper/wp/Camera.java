@@ -80,6 +80,20 @@ public final class Camera {
         return b;
     }
 
+    /**
+     * Pull the camera back inside the map after the view size changed
+     * (portrait↔landscape shrinks the reachable bounds): clamp the current
+     * center and any in-flight glide endpoints, so the view never shows the
+     * void outside the map after a rotation.
+     */
+    public void reclamp(float mapSizePx, float viewW, float viewH) {
+        B b = bounds(mapSizePx, viewW, viewH);
+        cx = clamp(cx, b.loX, b.hiX);
+        cy = clamp(cy, b.loY, b.hiY);
+        ox = clamp(ox, b.loX, b.hiX); oy = clamp(oy, b.loY, b.hiY);
+        tx = clamp(tx, b.loX, b.hiX); ty = clamp(ty, b.loY, b.hiY);
+    }
+
     public void update(double dt, float mapSizePx, float viewW, float viewH) {
         if (!initialized) reset(mapSizePx, viewW, viewH, switchInterval);
         if (frozen) return;
