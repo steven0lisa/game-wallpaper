@@ -29,6 +29,9 @@ public final class RenderThread extends Thread {
     static final long FRAME_MS = 180;           // H3 sprite frame period
     private static final long GLIDE_MS = 33;    // ~30fps while gliding
     private static final long MAP_SWITCH_MS = 15 * 60 * 1000L;
+    /** Settle time before the random unlock hop: returning to the launcher
+     *  should not immediately start drifting (feels janky while icons fade in). */
+    private static final long UNLOCK_HOP_DELAY_MS = 300;
     public static final float FPS_DWELL = 1000f / FRAME_MS;
 
     /** Supplied by the wallpaper engine (calls arrive on this thread). */
@@ -67,6 +70,7 @@ public final class RenderThread extends Thread {
     private final java.util.Random rng = new java.util.Random();
     private long logCamAt;
     private long nextMapSwitchMs;
+    private long unlockHopAt;        // scheduled unlock-hop time, 0 = none
     private float lastFps = -1;
 
     public RenderThread(Host host, android.content.res.AssetManager assets) {
@@ -264,13 +268,13 @@ public final class RenderThread extends Thread {
                     else animOriginMs = now - ((lastStep < 0 ? 0 : (long) lastStep * FRAME_MS));
                     if (debugCam == null) {
                         camera.setFrozen(false);
-                        // 解锁 → 25% 概率小幅跳近邻视野（幅度≈一屏、centerBounds 夹持
-                        // 不露黑区域）；75% 保持原位，减少滋扰与滑动耗电
+                        // 解锁 → 延迟 UNLOCK_HOP_DELAY_MS 再掷 25% 概率小幅跳近邻视野
+                        // （幅度≈一屏、centerBounds 夹持不露黑区域）；75% 保持原位。
+                        // 立即跳会让刚回到桌面就漂移、动画发卡（用户反馈）——先让
+                        // 桌面稳定下来，到点再在本循环里掷骰。
                         if (renderer.hasMap()) {
-                            if (camera.maybeJumpNearby(renderer.worldSizePx(), renderer.viewW(), renderer.viewH()))
-                                Log.i(TAG, "unlock — small hop (25% gate)");
-                            else
-                                Log.i(TAG, "unlock — stay in place (75% gate)");
+                            unlockHopAt = now + UNLOCK_HOP_DELAY_MS;
+                            Log.i(TAG, "unlock — random hop in " + UNLOCK_HOP_DELAY_MS + "ms");
                         }
                     }
                 }
@@ -306,6 +310,19 @@ public final class RenderThread extends Thread {
 
                 // staged debug camera pin (may switch maps; must run on GL thread)
                 if (debugCam != null) applyDebugCam();
+
+                // pending unlock hop: fire exactly UNLOCK_HOP_DELAY_MS after the
+                // wallpaper became visible again (launcher has settled by then)
+                if (unlockHopAt > 0 && now >= unlockHopAt) {
+                    boolean roll = debugCam == null && renderer.hasMap();
+                    unlockHopAt = 0;
+                    if (roll) {
+                        if (camera.maybeJumpNearby(renderer.worldSizePx(), renderer.viewW(), renderer.viewH()))
+                            Log.i(TAG, "unlock — small hop (25% gate)");
+                        else
+                            Log.i(TAG, "unlock — stay in place (75% gate)");
+                    }
+                }
 
                 // camera advance
                 double dt = Math.min(0.25, (now - lastLoopMs) / 1000.0);
@@ -346,6 +363,8 @@ public final class RenderThread extends Thread {
                     next = animOriginMs + (elapsed / FRAME_MS + 1) * FRAME_MS;
                     if (next <= now) next = now + FRAME_MS;
                 }
+                // a pending unlock hop must wake us right on time
+                if (unlockHopAt > 0 && unlockHopAt < next) next = unlockHopAt;
                 synchronized (lock) {
                     long d = next - SystemClock.uptimeMillis();
                     if (d > 0 && !invalidate && !surfaceDirty && !exit)
